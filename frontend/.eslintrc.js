@@ -1,0 +1,95 @@
+module.exports = {
+  env: {
+    browser: true,
+    es2021: true,
+    node: true,
+  },
+  extends: [
+    'eslint:recommended',
+    '@typescript-eslint/recommended',
+    'plugin:react/recommended',
+    'plugin:react-hooks/recommended',
+  ],
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaFeatures: {
+      jsx: true,
+    },
+    ecmaVersion: 12,
+    sourceType: 'module',
+  },
+  plugins: ['react', '@typescript-eslint', 'react-hooks'],
+  rules: {
+    // Prettier関連のルールを無効化
+    'prettier/prettier': 'off',
+    // React関連のルール調整
+    'react/react-in-jsx-scope': 'off',
+    'react/prop-types': 'off',
+    // TypeScript関連のルール調整
+    '@typescript-eslint/explicit-module-boundary-types': 'off',
+    '@typescript-eslint/no-explicit-any': 'warn',
+    // その他のルール調整
+    'no-unused-vars': 'warn',
+    'no-console': 'warn',
+  },
+  settings: {
+    react: {
+      version: 'detect',
+    },
+  },
+  // Prettierとの競合を避けるため、フォーマット関連ルールを無効化
+  overrides: [
+    {
+      files: ['**/*.{js,jsx,ts,tsx}'],
+      rules: {
+        // フォーマット関連のルールを全て無効化
+        indent: 'off',
+        'linebreak-style': 'off',
+        quotes: 'off',
+        semi: 'off',
+        'comma-dangle': 'off',
+        'max-len': 'off',
+        'object-curly-spacing': 'off',
+        'array-bracket-spacing': 'off',
+        'computed-property-spacing': 'off',
+        'func-call-spacing': 'off',
+        'key-spacing': 'off',
+        'keyword-spacing': 'off',
+        'no-trailing-spaces': 'off',
+        'no-multiple-empty-lines': 'off',
+        'space-before-blocks': 'off',
+        'space-before-function-paren': 'off',
+        'space-in-parens': 'off',
+        'space-infix-ops': 'off',
+        'space-unary-ops': 'off',
+        'spaced-comment': 'off',
+        'block-spacing': 'off',
+        'brace-style': 'off',
+        'comma-spacing': 'off',
+        'comma-style': 'off',
+        'eol-last': 'off',
+        'jsx-quotes': 'off',
+        'no-mixed-spaces-and-tabs': 'off',
+        'no-multi-spaces': 'off',
+        'no-whitespace-before-property': 'off',
+        'nonblock-statement-body-position': 'off',
+        'object-curly-newline': 'off',
+        'object-property-newline': 'off',
+        'one-var-declaration-per-line': 'off',
+        'operator-linebreak': 'off',
+        'padded-blocks': 'off',
+        'quote-props': 'off',
+        'rest-spread-spacing': 'off',
+        'semi-spacing': 'off',
+        'semi-style': 'off',
+        'switch-colon-spacing': 'off',
+        'template-curly-spacing': 'off',
+        'template-tag-spacing': 'off',
+        'unicode-bom': 'off',
+        'wrap-iife': 'off',
+        'wrap-regex': 'off',
+        'yield-star-spacing': 'off',
+      },
+    },
+  ],
+};
