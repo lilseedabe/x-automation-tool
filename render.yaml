@@ -2,19 +2,31 @@
 # X自動反応ツール - 運営者ブラインド設計
 
 services:
-  # バックエンド API サービス
+  # 統合 Web サービス（バックエンド + フロントエンド）
   - type: web
-    name: x-automation-backend
+    name: x-automation-tool
     env: python
     buildCommand: |
+      # Python依存関係
       pip install --upgrade pip
       pip install -r requirements.txt
+      
+      # フロントエンド（package-lock.json問題を回避）
+      cd frontend
+      rm -f package-lock.json
+      npm install
+      npm run build
+      cd ..
     startCommand: |
       python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     envVars:
       # Python設定
       - key: PYTHON_VERSION
         value: 3.9
+      
+      # Node.js設定
+      - key: NODE_VERSION
+        value: 18
       
       # アプリケーション設定
       - key: APP_ENV
@@ -50,7 +62,7 @@ services:
       
       # CORS設定
       - key: ALLOWED_ORIGINS
-        value: https://x-automation-frontend.onrender.com,http://localhost:3000
+        value: https://x-automation-tool.onrender.com,http://localhost:3000
       
       # ログレベル
       - key: LOG_LEVEL
@@ -60,47 +72,21 @@ services:
       - key: PRIVACY_MODE
         value: operator_blind
       
-      # サーバー情報
-      - key: SERVER_PROVIDER
-        value: Render
-      
-      - key: SERVER_LOCATION
-        value: 米国
-      
-    # ヘルスチェック
-    healthCheckPath: /api/system/health
-
-  # フロントエンド サービス
-  - type: web
-    name: x-automation-frontend
-    env: static
-    buildCommand: |
-      cd frontend
-      npm ci
-      npm run build
-    staticPublishPath: frontend/build
-    envVars:
-      # Node.js設定
-      - key: NODE_VERSION
-        value: 18
-      
       # React設定
       - key: REACT_APP_API_URL
-        value: https://x-automation-backend.onrender.com
+        value: https://x-automation-tool.onrender.com
       
       - key: REACT_APP_ENV
         value: production
       
-      # セキュリティ設定
       - key: REACT_APP_PRIVACY_MODE
         value: maximum
       
-      # 機能フラグ
       - key: REACT_APP_OPERATOR_BLIND_MODE
         value: true
-      
-      - key: REACT_APP_LOCAL_STORAGE_ENCRYPTION
-        value: true
+    
+    # ヘルスチェック
+    healthCheckPath: /api/system/health
 
 # データベース設定
 databases:
@@ -124,12 +110,6 @@ environments:
       - auto_scaling: true
       - health_checks: true
       - zero_downtime: true
-    
-    # 監視設定
-    monitoring:
-      - error_tracking: true
-      - performance_monitoring: true
-      - uptime_monitoring: true
 
 # ビルド設定
 build:
@@ -140,7 +120,7 @@ build:
   
   # Node.js依存関係キャッシュ
   node:
-    cache: true
+    cache: false  # package-lock.json問題回避のためキャッシュ無効
     version: 18
 
 # デプロイメント設定
@@ -155,26 +135,12 @@ deployment:
     - minify_assets: true
     - compress_responses: true
     - cache_static_assets: true
-  
-  # セキュリティヘッダー
-  security_headers:
-    - strict_transport_security: true
-    - content_security_policy: true
-    - x_frame_options: DENY
-    - x_content_type_options: nosniff
 
 # 通知設定
 notifications:
   # デプロイ通知
   deploy:
     enabled: true
-    channels:
-      - email
-  
-  # エラー通知
-  errors:
-    enabled: true
-    threshold: 5
     channels:
       - email
 
@@ -191,12 +157,6 @@ privacy:
     - operator_blind_storage: true
     - user_controlled_deletion: true
     - no_operator_access: true
-  
-  # コンプライアンス
-  compliance:
-    - gdpr_ready: true
-    - privacy_by_design: true
-    - data_minimization: true
 
 # 費用最適化
 cost_optimization:
@@ -219,12 +179,6 @@ operations:
     enabled: true
     frequency: daily
     retention: 7日
-  
-  # メンテナンス
-  maintenance:
-    - automatic_updates: true
-    - security_patches: true
-    - dependency_updates: false  # 手動確認
 
 # 開発者向け情報
 developer_info:
@@ -242,10 +196,15 @@ notes: |
   
   💰 費用効率:
   - Renderの無料プランを最大活用
-  - 必要最小限のリソース使用
+  - 統合デプロイで1サービスのみ使用
   - 自動スリープ機能でコスト削減
   
   🚀 高可用性:
   - ゼロダウンタイムデプロイ
   - 自動スケーリング
   - ヘルスチェック監視
+  
+  🔧 ビルド修正:
+  - package-lock.json削除で依存関係問題解決
+  - npm install で最新依存関係取得
+  - Node.jsキャッシュ無効化
