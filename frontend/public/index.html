@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="🤖 X自動反応ツール - AI搭載のソーシャルメディア自動化プラットフォーム" />
+    <meta name="keywords" content="X, Twitter, 自動化, AI, いいね, リポスト, 自動反応" />
+    <meta name="author" content="X自動反応ツール開発チーム" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="🤖 X自動反応ツール" />
+    <meta property="og:description" content="AI搭載のX自動化プラットフォーム - いいね♡とリポストを安全に自動化" />
+    <meta property="og:image" content="%PUBLIC_URL%/logo192.png" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="🤖 X自動反応ツール" />
+    <meta property="twitter:description" content="AI搭載のX自動化プラットフォーム - いいね♡とリポストを安全に自動化" />
+    <meta property="twitter:image" content="%PUBLIC_URL%/logo192.png" />
+    
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <title>🤖 X自動反応ツール - AI Powered</title>
+    
+    <!-- MetaMask完全ブロック用スクリプト -->
+    <script>
+      // MetaMask完全無効化
+      (function() {
+        'use strict';
+        
+        // window.ethereumを無効化
+        Object.defineProperty(window, 'ethereum', {
+          get: function() { return undefined; },
+          set: function() { return false; },
+          configurable: false,
+          enumerable: false
+        });
+        
+        // window.web3を無効化
+        Object.defineProperty(window, 'web3', {
+          get: function() { return undefined; },
+          set: function() { return false; },
+          configurable: false,
+          enumerable: false
+        });
+        
+        // MetaMaskプロバイダを無効化
+        if (window.ethereum) {
+          delete window.ethereum;
+        }
+        if (window.web3) {
+          delete window.web3;
+        }
+        
+        // グローバルエラーハンドラー（最優先）
+        window.addEventListener('error', function(event) {
+          const message = event.message || event.error?.message || '';
+          const filename = event.filename || '';
+          
+          if (message.includes('MetaMask') || 
+              message.includes('chrome-extension') ||
+              filename.includes('chrome-extension') ||
+              message.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+        
+        // Promise rejection エラーも処理
+        window.addEventListener('unhandledrejection', function(event) {
+          const reason = event.reason?.message || event.reason || '';
+          
+          if (typeof reason === 'string' && 
+              (reason.includes('MetaMask') || 
+               reason.includes('chrome-extension'))) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+        
+        // console.error のオーバーライド
+        const originalError = console.error;
+        console.error = function() {
+          const message = Array.prototype.slice.call(arguments).join(' ');
+          if (message.includes('MetaMask') || 
+              message.includes('chrome-extension') ||
+              message.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')) {
+            // MetaMask関連エラーは完全に無視
+            return;
+          }
+          return originalError.apply(console, arguments);
+        };
+        
+        // console.warn のオーバーライド
+        const originalWarn = console.warn;
+        console.warn = function() {
+          const message = Array.prototype.slice.call(arguments).join(' ');
+          if (message.includes('MetaMask') || 
+              message.includes('chrome-extension') ||
+              message.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')) {
+            // MetaMask関連警告は完全に無視
+            return;
+          }
+          return originalWarn.apply(console, arguments);
+        };
+        
+        // MetaMask関連のDOM mutation を監視して無効化
+        const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  // MetaMask関連要素を削除
+                  const metaMaskElements = node.querySelectorAll(
+                    '[data-metamask], [class*="metamask"], [id*="metamask"], [class*="web3"], [data-web3]'
+                  );
+                  metaMaskElements.forEach(function(element) {
+                    element.remove();
+                  });
+                }
+              });
+            }
+          });
+        });
+        
+        // ページロード後に observer を開始
+        document.addEventListener('DOMContentLoaded', function() {
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true
+          });
+        });
+        
+      })();
+    </script>
+    
+    <!-- CSS Variables for Theme -->
+    <style>
+      :root {
+        --primary-color: #3b82f6;
+        --secondary-color: #8b5cf6;
+        --success-color: #10b981;
+        --warning-color: #f59e0b;
+        --error-color: #ef4444;
+        --gray-50: #f9fafb;
+        --gray-100: #f3f4f6;
+        --gray-200: #e5e7eb;
+        --gray-300: #d1d5db;
+        --gray-400: #9ca3af;
+        --gray-500: #6b7280;
+        --gray-600: #4b5563;
+        --gray-700: #374151;
+        --gray-800: #1f2937;
+        --gray-900: #111827;
+      }
+      
+      /* Loading状態のスタイル */
+      .app-loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      
+      .loading-content {
+        text-align: center;
+        color: white;
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* MetaMask関連要素を完全に非表示 */
+      [data-metamask],
+      [class*="metamask"],
+      [id*="metamask"],
+      [data-web3],
+      [class*="web3"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+        <h1>🤖 X自動反応ツール</h1>
+        <p>このアプリケーションを実行するにはJavaScriptを有効にしてください。</p>
+        <p>Please enable JavaScript to run this application.</p>
+      </div>
+    </noscript>
+    
+    <!-- ロード中の表示 -->
+    <div id="loading" class="app-loading">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <h2 style="margin: 0 0 10px 0; font-size: 24px; font-weight: bold;">🤖 X自動反応ツール</h2>
+        <p style="margin: 0; opacity: 0.9;">AI Powered Social Media Automation</p>
+        <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.7;">読み込み中...</p>
+      </div>
+    </div>
+    
+    <!-- メインアプリケーション -->
+    <div id="root"></div>
+    
+    <!-- ロード完了後に読み込み画面を非表示にする -->
+    <script>
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          var loading = document.getElementById('loading');
+          if (loading) {
+            loading.style.opacity = '0';
+            loading.style.transition = 'opacity 0.5s ease-out';
+            setTimeout(function() {
+              loading.style.display = 'none';
+            }, 500);
+          }
+        }, 1000);
+      });
+      
+      // React アプリが読み込まれたら確実に非表示にする
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+          var loading = document.getElementById('loading');
+          var root = document.getElementById('root');
+          if (loading && root && root.children.length > 0) {
+            loading.style.display = 'none';
+          }
+        }, 2000);
+      });
+    </script>
+  </body>
+</html>
