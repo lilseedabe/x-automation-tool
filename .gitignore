@@ -273,7 +273,7 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public  <- これを削除（React標準のpublicフォルダを除外しないため）
 
 # vue-nuxt build output
 .nuxt
@@ -304,7 +304,7 @@ public
 .pnp.*
 
 # Create React App
-/build
+frontend/build  # ビルド結果のみ除外、publicフォルダは含める
 
 # ==============================================================================
 # 💻 IDE・エディタ
