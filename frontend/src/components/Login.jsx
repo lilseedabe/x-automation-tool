@@ -251,7 +251,7 @@ const Login = () => {
 
         {/* フッター */}
         <div className="mt-8 text-center text-sm text-gray-500">
-          <p>© 2024 X自動反応ツール - AI駆動自動化システム</p>
+          <p>© {new Date().getFullYear()} X自動反応ツール - AI駆動自動化システム</p>
         </div>
       </motion.div>
     </div>
