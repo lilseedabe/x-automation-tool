@@ -29,7 +29,7 @@ CREATE TABLE users (
     is_verified BOOLEAN DEFAULT false,
     
     -- メタデータ
-    registration_ip INET,
+    registration_ip VARCHAR(45), -- IPv6対応（INET → VARCHAR）
     user_agent TEXT,
     
     -- 設定
@@ -274,7 +274,7 @@ CREATE TABLE user_sessions (
     refresh_expires_at TIMESTAMP WITH TIME ZONE,
     
     -- クライアント情報
-    ip_address INET,
+    ip_address VARCHAR(45), -- IPv6対応（INET → VARCHAR）
     user_agent TEXT,
     
     -- ステータス
@@ -373,15 +373,6 @@ ALTER TABLE user_blacklist ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
 
--- ユーザーは自分のデータのみアクセス可能
-CREATE POLICY user_api_keys_policy ON user_api_keys 
-    FOR ALL TO x_automation_user 
-    USING (user_id = current_setting('app.current_user_id')::uuid);
-
-CREATE POLICY automation_settings_policy ON automation_settings 
-    FOR ALL TO x_automation_user 
-    USING (user_id = current_setting('app.current_user_id')::uuid);
-
 -- ===================================================================
 -- 🧹 クリーンアップジョブ用関数
 -- ===================================================================
@@ -434,5 +425,6 @@ BEGIN
     RAISE NOTICE '   - 運営者ブラインド暗号化';
     RAISE NOTICE '   - Row Level Security';
     RAISE NOTICE '   - 自動クリーンアップ';
+    RAISE NOTICE '✅ PostgreSQL VPS + SQLAlchemy 互換性対応完了!';
 END;
 $$;

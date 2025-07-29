@@ -11,9 +11,9 @@ import enum
 from sqlalchemy import (
     Column, String, Integer, Boolean, Text, TIMESTAMP, 
     ForeignKey, Index, CheckConstraint, UniqueConstraint,
-    LargeBinary, ARRAY, JSON, Time, INET
+    LargeBinary, ARRAY, JSON, Time
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB, INET
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 from pydantic import BaseModel, Field, ConfigDict, validator
@@ -45,7 +45,7 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # メタデータ
-    registration_ip: Mapped[Optional[str]] = mapped_column(INET)
+    registration_ip: Mapped[Optional[str]] = mapped_column(String(45))  # IPv6対応（INET → String）
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
     
     # 設定
@@ -325,7 +325,7 @@ class UserSession(Base):
     refresh_expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
     
     # クライアント情報
-    ip_address: Mapped[Optional[str]] = mapped_column(INET)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45))  # IPv6対応（INET → String）
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
     
     # ステータス
