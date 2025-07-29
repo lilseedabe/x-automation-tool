@@ -1,5 +1,5 @@
 # 🚀 Render デプロイメント設定
-# X自動反応ツール - 運営者ブラインド設計
+# X自動反応ツール - VPS PostgreSQL対応版
 
 services:
   # 統合 Web サービス（バックエンド + フロントエンド）
@@ -18,11 +18,11 @@ services:
       npm run build
       cd ..
     startCommand: |
-      python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+      python -m uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
       # Python設定
       - key: PYTHON_VERSION
-        value: 3.9
+        value: 3.11
       
       # Node.js設定
       - key: NODE_VERSION
@@ -32,11 +32,21 @@ services:
       - key: APP_ENV
         value: production
       
-      # データベース設定（Render PostgreSQL）
+      # VPS PostgreSQL接続設定（手動設定）
       - key: DATABASE_URL
-        fromDatabase:
-          name: x-automation-db
-          property: connectionString
+        sync: false  # 手動で設定
+      
+      # または個別設定（こちらも手動設定）
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 5432
+      - key: DB_NAME
+        value: x_automation_db
+      - key: DB_USER
+        value: x_automation_user
+      - key: DB_PASSWORD
+        sync: false
       
       # Groq AI設定（運営者が設定）
       - key: GROQ_API_KEY
@@ -46,9 +56,9 @@ services:
       - key: SECRET_KEY
         generateValue: true
       
-      # ストレージ設定
+      # ストレージ設定（VPS用に変更）
       - key: STORAGE_MODE
-        value: render_postgresql
+        value: vps_postgresql
       
       - key: OPERATOR_BLIND_ENABLED
         value: true
@@ -67,6 +77,16 @@ services:
       # ログレベル
       - key: LOG_LEVEL
         value: INFO
+      
+      # データベース接続設定
+      - key: DB_DEBUG
+        value: false
+      
+      - key: DB_POOL_SIZE
+        value: 5
+      
+      - key: DB_TIMEOUT
+        value: 30
       
       # プライバシー設定
       - key: PRIVACY_MODE
@@ -88,13 +108,13 @@ services:
     # ヘルスチェック
     healthCheckPath: /api/system/health
 
-# データベース設定
-databases:
-  - name: x-automation-db
-    databaseName: x_automation_production
-    user: x_automation_user
-    plan: starter  # 無料プラン
-    postgresMajorVersion: 15
+# データベース設定（削除 - VPS使用のため不要）
+# databases:
+#   - name: x-automation-db
+#     databaseName: x_automation_production
+#     user: x_automation_user
+#     plan: starter
+#     postgresMajorVersion: 15
 
 # 環境設定
 environments:
@@ -116,7 +136,7 @@ build:
   # Python依存関係キャッシュ
   python:
     cache: true
-    version: 3.9
+    version: 3.11
   
   # Node.js依存関係キャッシュ
   node:
@@ -166,19 +186,18 @@ cost_optimization:
     - efficient_scaling: true
     - minimal_resources: true
   
-  # 無料プラン活用
+  # 無料プラン活用（VPS使用によりPostgreSQLコスト削減）
   free_tier:
     - web_service: 750時間/月
-    - postgresql: 1GB
     - bandwidth: 100GB/月
+    - external_database: VPS PostgreSQL
 
 # 運用設定
 operations:
-  # バックアップ
+  # バックアップ（VPS側で管理）
   backup:
-    enabled: true
-    frequency: daily
-    retention: 7日
+    enabled: false  # VPS側で実装
+    note: "VPS側でcronによる日次バックアップ実施"
 
 # 開発者向け情報
 developer_info:
@@ -186,6 +205,7 @@ developer_info:
   support: GitHub Issues
   license: MIT
   privacy_policy: 運営者ブラインド設計により最高レベルのプライバシー保護
+  database_info: "外部VPS PostgreSQL使用"
   
 # 注意事項
 notes: |
@@ -195,9 +215,14 @@ notes: |
   - 自動削除機能により長期保存なし
   
   💰 費用効率:
-  - Renderの無料プランを最大活用
-  - 統合デプロイで1サービスのみ使用
-  - 自動スリープ機能でコスト削減
+  - Renderの無料プラン（WebサービスとCDN）
+  - 外部VPS PostgreSQL（月額1,000円）
+  - 合計: 月額約1,000円で完全なプライバシー保護
+  
+  🗄️ データベース:
+  - 外部VPS PostgreSQL 16使用
+  - Renderの制限を受けない独立したデータベース
+  - 運営者ブラインド暗号化対応
   
   🚀 高可用性:
   - ゼロダウンタイムデプロイ
