@@ -3,7 +3,7 @@
 SQLAlchemy + Pydantic 運営者ブラインド設計
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 import enum
@@ -160,8 +160,8 @@ class AutomationSettings(Base):
     enable_human_like_timing: Mapped[bool] = mapped_column(Boolean, default=True)
     
     # スケジュール設定
-    active_hours_start: Mapped[datetime.time] = mapped_column(Time, default=datetime.time(9, 0))
-    active_hours_end: Mapped[datetime.time] = mapped_column(Time, default=datetime.time(22, 0))
+    active_hours_start: Mapped[time] = mapped_column(Time, default=time(9, 0))
+    active_hours_end: Mapped[time] = mapped_column(Time, default=time(22, 0))
     active_days: Mapped[List[int]] = mapped_column(ARRAY(Integer), default=[1,2,3,4,5,6,7])
     
     # タイムスタンプ
