@@ -126,17 +126,12 @@ class DatabaseManager:
             self.async_engine = create_async_engine(
                 async_url,
                 poolclass=NullPool,  # VPS環境での接続プール最適化
-                pool_pre_ping=True,
-                pool_recycle=3600,   # 1時間でコネクションをリサイクル
-                pool_timeout=self.connection_timeout,
-                pool_reset_on_return='commit',
                 connect_args={
                     "server_settings": {
                         "application_name": "x_automation_tool_render",
                         "jit": "off"  # パフォーマンス最適化
                     },
-                    "command_timeout": self.connection_timeout,
-                    "statement_timeout": f"{self.connection_timeout}s"
+                    "command_timeout": self.connection_timeout
                 },
                 echo=os.getenv("DB_DEBUG", "false").lower() == "true"
             )
@@ -153,9 +148,6 @@ class DatabaseManager:
             self.sync_engine = create_engine(
                 sync_url,
                 poolclass=NullPool,
-                pool_pre_ping=True,
-                pool_recycle=3600,
-                pool_timeout=self.connection_timeout,
                 connect_args={
                     "application_name": "x_automation_tool_sync",
                     "connect_timeout": self.connection_timeout
