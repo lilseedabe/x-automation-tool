@@ -1,33 +1,186 @@
 /**
- * 🤖 X自動反応ツール - ログインコンポーネント
+ * 🤖 X自動反応ツール - ログインコンポーネント（本番版）
  * 
- * ユーザー認証画面
+ * ユーザー認証画面 - 完全実装版
  */
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { LogIn, UserPlus, Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
+import { LogIn, UserPlus, Eye, EyeOff, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import toast from 'react-hot-toast';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     username: '',
     fullName: ''
   });
+  const [errors, setErrors] = useState({});
 
-  const handleSubmit = (e) => {
+  // 認証フックを使用
+  const { login } = useAuth();
+
+  // フォームバリデーション
+  const validateForm = () => {
+    const newErrors = {};
+
+    // メールアドレス検証
+    if (!formData.email) {
+      newErrors.email = 'メールアドレスを入力してください';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = '有効なメールアドレスを入力してください';
+    }
+
+    // パスワード検証
+    if (!formData.password) {
+      newErrors.password = 'パスワードを入力してください';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'パスワードは6文字以上で入力してください';
+    }
+
+    // 新規登録時の追加検証
+    if (!isLogin) {
+      if (!formData.username) {
+        newErrors.username = 'ユーザー名を入力してください';
+      } else if (formData.username.length < 3) {
+        newErrors.username = 'ユーザー名は3文字以上で入力してください';
+      } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
+        newErrors.username = 'ユーザー名は英数字とアンダースコアのみ使用できます';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // 認証処理の実装
-    console.log('Form submitted:', formData);
+    
+    // フォームバリデーション
+    if (!validateForm()) {
+      toast.error('入力内容をご確認ください');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrors({});
+
+    try {
+      if (isLogin) {
+        // ログイン処理
+        console.log('ログイン試行:', { email: formData.email });
+        
+        const result = await login({
+          email: formData.email,
+          password: formData.password
+        });
+
+        if (result.success) {
+          toast.success('ログインしました！', {
+            duration: 2000,
+            icon: '🎉'
+          });
+          // useAuthフックによってisAuthenticatedが更新され、
+          // App.jsxのProtectedRouteで自動的にダッシュボードにリダイレクトされます
+        } else {
+          console.error('ログインエラー:', result.error);
+          toast.error(result.error || 'ログインに失敗しました');
+          setErrors({ general: result.error || 'ログインに失敗しました' });
+        }
+      } else {
+        // 新規登録処理
+        console.log('新規登録試行:', { 
+          username: formData.username, 
+          email: formData.email,
+          fullName: formData.fullName 
+        });
+
+        // 本番環境での新規登録API呼び出し
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: formData.username,
+            email: formData.email,
+            password: formData.password,
+            fullName: formData.fullName || null
+          }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          toast.success('アカウントを作成しました！ログインしてください。', {
+            duration: 4000,
+            icon: '✅'
+          });
+          
+          // ログインフォームに切り替え
+          setIsLogin(true);
+          setFormData(prev => ({ 
+            ...prev, 
+            username: '', 
+            fullName: '',
+            password: '' // セキュリティのためパスワードもクリア
+          }));
+        } else {
+          console.error('登録エラー:', data);
+          const errorMessage = data.detail || data.message || 'アカウント作成に失敗しました';
+          toast.error(errorMessage);
+          setErrors({ general: errorMessage });
+        }
+      }
+    } catch (error) {
+      console.error('認証エラー:', error);
+      
+      let errorMessage = '通信エラーが発生しました';
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'サーバーに接続できません。しばらく後でお試しください。';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, {
+        duration: 5000
+      });
+      setErrors({ general: errorMessage });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    
+    // エラーをクリア
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+  };
+
+  const toggleFormMode = () => {
+    setIsLogin(!isLogin);
+    setErrors({});
     setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
+      email: '',
+      password: '',
+      username: '',
+      fullName: ''
     });
   };
 
@@ -63,157 +216,216 @@ const Login = () => {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3 }}
-          className="card"
+          className="bg-white rounded-xl shadow-lg p-6 border border-gray-200"
         >
-          <div className="card-header">
+          {/* タブ切り替え */}
+          <div className="mb-6">
             <div className="flex rounded-lg bg-gray-100 p-1">
               <button
                 onClick={() => setIsLogin(true)}
+                disabled={isLoading}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
                   isLogin 
                     ? 'bg-white text-gray-900 shadow-sm' 
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                } ${isLoading ? 'cursor-not-allowed opacity-50' : ''}`}
               >
                 ログイン
               </button>
               <button
                 onClick={() => setIsLogin(false)}
+                disabled={isLoading}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
                   !isLogin 
                     ? 'bg-white text-gray-900 shadow-sm' 
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                } ${isLoading ? 'cursor-not-allowed opacity-50' : ''}`}
               >
                 新規登録
               </button>
             </div>
           </div>
 
-          <div className="card-body">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* 新規登録時のみ表示 */}
-              {!isLogin && (
-                <>
-                  <div className="form-group">
-                    <label className="form-label">ユーザー名</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                      <input
-                        type="text"
-                        name="username"
-                        className="form-input pl-10"
-                        placeholder="username"
-                        value={formData.username}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
+          {/* 全般的なエラーメッセージ */}
+          {errors.general && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700"
+            >
+              <AlertCircle size={16} />
+              <span className="text-sm">{errors.general}</span>
+            </motion.div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* 新規登録時のみ表示 */}
+            {!isLogin && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ユーザー名 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="text"
+                      name="username"
+                      className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                        errors.username ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                      }`}
+                      placeholder="username"
+                      value={formData.username}
+                      onChange={handleInputChange}
+                      disabled={isLoading}
+                      required={!isLogin}
+                    />
                   </div>
+                  {errors.username && (
+                    <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+                  )}
+                </div>
 
-                  <div className="form-group">
-                    <label className="form-label">フルネーム</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                      <input
-                        type="text"
-                        name="fullName"
-                        className="form-input pl-10"
-                        placeholder="田中 太郎"
-                        value={formData.fullName}
-                        onChange={handleInputChange}
-                      />
-                    </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">フルネーム</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="text"
+                      name="fullName"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="田中 太郎"
+                      value={formData.fullName}
+                      onChange={handleInputChange}
+                      disabled={isLoading}
+                    />
                   </div>
-                </>
-              )}
-
-              {/* メールアドレス */}
-              <div className="form-group">
-                <label className="form-label">メールアドレス</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="email"
-                    name="email"
-                    className="form-input pl-10"
-                    placeholder="your@email.com"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    required
-                  />
                 </div>
+              </>
+            )}
+
+            {/* メールアドレス */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                メールアドレス <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="email"
+                  name="email"
+                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                    errors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                  placeholder="your@email.com"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  disabled={isLoading}
+                  required
+                />
               </div>
-
-              {/* パスワード */}
-              <div className="form-group">
-                <label className="form-label">パスワード</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    name="password"
-                    className="form-input pl-10 pr-10"
-                    placeholder="••••••••"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* 送信ボタン */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                type="submit"
-                className="w-full btn btn-primary flex items-center justify-center gap-2"
-              >
-                {isLogin ? (
-                  <>
-                    <LogIn size={16} />
-                    ログイン
-                  </>
-                ) : (
-                  <>
-                    <UserPlus size={16} />
-                    アカウント作成
-                  </>
-                )}
-              </motion.button>
-            </form>
-
-            {/* 追加情報 */}
-            <div className="mt-6 text-center">
-              {isLogin ? (
-                <p className="text-sm text-gray-600">
-                  アカウントをお持ちでない方は{' '}
-                  <button
-                    onClick={() => setIsLogin(false)}
-                    className="text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    新規登録
-                  </button>
-                </p>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  すでにアカウントをお持ちの方は{' '}
-                  <button
-                    onClick={() => setIsLogin(true)}
-                    className="text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    ログイン
-                  </button>
-                </p>
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
               )}
             </div>
+
+            {/* パスワード */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                パスワード <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  className={`w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                    errors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  disabled={isLoading}
+                  required
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={isLoading}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              )}
+              {!isLogin && (
+                <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>
+              )}
+            </div>
+
+            {/* 送信ボタン */}
+            <motion.button
+              whileHover={!isLoading ? { scale: 1.02 } : {}}
+              whileTap={!isLoading ? { scale: 0.98 } : {}}
+              type="submit"
+              disabled={isLoading}
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                isLoading 
+                  ? 'bg-gray-400 cursor-not-allowed text-white' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
+              }`}
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>{isLogin ? 'ログイン中...' : 'アカウント作成中...'}</span>
+                </>
+              ) : isLogin ? (
+                <>
+                  <LogIn size={16} />
+                  ログイン
+                </>
+              ) : (
+                <>
+                  <UserPlus size={16} />
+                  アカウント作成
+                </>
+              )}
+            </motion.button>
+          </form>
+
+          {/* フォーム切り替え */}
+          <div className="mt-6 text-center">
+            {isLogin ? (
+              <p className="text-sm text-gray-600">
+                アカウントをお持ちでない方は{' '}
+                <button
+                  onClick={toggleFormMode}
+                  disabled={isLoading}
+                  className={`text-blue-600 hover:text-blue-700 font-medium ${
+                    isLoading ? 'cursor-not-allowed opacity-50' : ''
+                  }`}
+                >
+                  新規登録
+                </button>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-600">
+                すでにアカウントをお持ちの方は{' '}
+                <button
+                  onClick={toggleFormMode}
+                  disabled={isLoading}
+                  className={`text-blue-600 hover:text-blue-700 font-medium ${
+                    isLoading ? 'cursor-not-allowed opacity-50' : ''
+                  }`}
+                >
+                  ログイン
+                </button>
+              </p>
+            )}
           </div>
         </motion.div>
 
