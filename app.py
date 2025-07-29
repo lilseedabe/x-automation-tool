@@ -1,12 +1,13 @@
 """
 🤖 X自動反応ツール - メインアプリケーション
-Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+ 完全対応版
+Python 3.13 + FastAPI + PostgreSQL VPS + 運営者ブラインド設計
 """
 
 import os
 import sys
 from typing import Dict, Any, List
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 # FastAPI 0.115.9+ (Python 3.13公式サポート)
 from fastapi import FastAPI, HTTPException
@@ -17,6 +18,41 @@ from fastapi.middleware.cors import CORSMiddleware
 # Pydantic 2.8+ (Python 3.13公式サポート)
 from pydantic import BaseModel, Field, ConfigDict
 
+# データベース関連
+from backend.database.connection import init_database, close_database, check_database_health
+from backend.api.auth_router import router as auth_router
+
+# ライフサイクル管理
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """アプリケーションライフサイクル管理"""
+    # 起動時処理
+    print("🤖 X自動反応ツール - 起動中...")
+    
+    try:
+        # データベース接続初期化
+        await init_database()
+        print("✅ データベース接続初期化完了")
+        
+        # その他の初期化処理
+        print("✅ アプリケーション起動完了")
+        
+    except Exception as e:
+        print(f"❌ 起動エラー: {str(e)}")
+        raise
+    
+    yield
+    
+    # 終了時処理
+    print("🤖 X自動反応ツール - 終了中...")
+    try:
+        await close_database()
+        print("✅ データベース接続クローズ完了")
+    except Exception as e:
+        print(f"⚠️ 終了時エラー: {str(e)}")
+    
+    print("✅ アプリケーション終了完了")
+
 # アプリケーション初期化
 app = FastAPI(
     title="X自動反応ツール",
@@ -24,7 +60,8 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    summary="プライバシー重視のX自動反応システム"
+    summary="プライバシー重視のX自動反応システム",
+    lifespan=lifespan
 )
 
 # CORS設定
@@ -40,6 +77,9 @@ app.add_middleware(
 frontend_build_path = Path("frontend/build")
 if frontend_build_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+
+# ルーター登録
+app.include_router(auth_router)
 
 # Pydantic 2.8+ モデル定義（Python 3.13完全対応）
 class HealthResponse(BaseModel):
@@ -62,7 +102,8 @@ class HealthResponse(BaseModel):
     python_version: str = Field(description="Pythonバージョン", examples=["3.13.0"])
     frontend_built: bool = Field(description="フロントエンドビルド状態", examples=[True])
     environment: str = Field(description="環境", examples=["production"])
-    features: List[str] = Field(description="利用可能機能", examples=[["FastAPI", "Pydantic v2"]])
+    features: List[str] = Field(description="利用可能機能", examples=[["FastAPI", "PostgreSQL"]])
+    database: Dict[str, Any] = Field(description="データベース状態")
 
 class APIHealthResponse(BaseModel):
     """API ヘルスチェックレスポンスモデル"""
@@ -80,6 +121,7 @@ class APIHealthResponse(BaseModel):
     operator_blind: str = Field(description="運営者ブラインド", examples=["true"])
     compatibility: str = Field(description="互換性情報", examples=["Python 3.13 + FastAPI 0.115.9+"])
     features_status: Dict[str, str] = Field(description="機能状態", examples=[{"fastapi": "✅ Running"}])
+    database_status: Dict[str, Any] = Field(description="データベース詳細状態")
 
 class Feature(BaseModel):
     """機能モデル"""
@@ -91,7 +133,7 @@ class Feature(BaseModel):
     name: str = Field(description="機能名", examples=["運営者ブラインド設計"])
     description: str = Field(description="説明", examples=["技術的に運営者がユーザーデータにアクセス不可"])
     status: str = Field(description="状態", examples=["active", "ready", "planned"])
-    implementation: str = Field(description="実装方式", examples=["RSA-2048 + AES-256 暗号化"])
+    implementation: str = Field(description="実装方式", examples=["PostgreSQL + AES-256暗号化"])
 
 class DeploymentInfo(BaseModel):
     """デプロイ情報モデル"""
@@ -100,13 +142,15 @@ class DeploymentInfo(BaseModel):
         description="システムのデプロイメント詳細"
     )
     
-    platform: str = Field(description="プラットフォーム", examples=["Render"])
+    platform: str = Field(description="プラットフォーム", examples=["Render + シンVPS"])
     python_version: str = Field(description="Pythonバージョン", examples=["3.13.0"])
     fastapi_version: str = Field(description="FastAPIバージョン", examples=["0.115.9+"])
     pydantic_version: str = Field(description="Pydanticバージョン", examples=["2.8+"])
+    database: str = Field(description="データベース", examples=["PostgreSQL 16"])
+    vps_provider: str = Field(description="VPSプロバイダー", examples=["シンVPS"])
     compatibility: str = Field(description="互換性", examples=["✅ Python 3.13 Full Support"])
     uptime: str = Field(description="稼働時間", examples=["High Availability"])
-    cost: str = Field(description="コスト", examples=["Free Tier Optimized"])
+    cost: str = Field(description="コスト", examples=["VPS Optimized"])
 
 class FeaturesResponse(BaseModel):
     """機能一覧レスポンスモデル"""
@@ -206,35 +250,36 @@ async def read_root():
                 <h1>🤖 X自動反応ツール</h1>
                 
                 <div class="status">
-                    <h3>✅ FastAPI サーバー正常稼働中</h3>
+                    <h3>✅ FastAPI + PostgreSQL サーバー正常稼働中</h3>
                     <div>
                         <span class="tech-badge">Python {sys.version.split()[0]}</span>
                         <span class="tech-badge">FastAPI 0.115.9+</span>
                         <span class="tech-badge">Pydantic 2.8+</span>
-                        <span class="tech-badge">Python 3.13公式サポート</span>
+                        <span class="tech-badge">PostgreSQL VPS</span>
+                        <span class="tech-badge">運営者ブラインド</span>
                     </div>
-                    <p>🌍 運営者ブラインド設計で最高レベルのプライバシー保護</p>
+                    <p>🌍 シンVPS + Render ハイブリッド構成で安全なデータ管理</p>
                 </div>
 
                 <div class="grid">
                     <div class="feature">
                         <h4>🔐 運営者ブラインド設計</h4>
-                        <p>ユーザーのAPIキーに運営者が技術的にアクセスできない安全設計。RSA-2048 + AES-256暗号化でデータを保護。</p>
+                        <p>ユーザーのAPIキーは暗号化され、運営者が技術的にアクセス不可。PostgreSQL VPSで安全管理。</p>
                     </div>
 
                     <div class="feature">
-                        <h4>🤖 AI搭載自動化</h4>
-                        <p>Groq AIによる高度なエンゲージメント分析とスマートターゲティング。質の高いユーザーのみに自動反応。</p>
+                        <h4>🏗️ VPS + Render ハイブリッド</h4>
+                        <p>シンVPSでデータベース、Renderでアプリケーション。コスト効率と安全性を両立。</p>
                     </div>
 
                     <div class="feature">
-                        <h4>📊 柔軟なデータ管理</h4>
-                        <p>ローカル保存（最高プライバシー）とサーバー保存（継続自動化）を選択可能。24時間〜無期限の保持期間設定。</p>
+                        <h4>🔑 暗号化ユーザー管理</h4>
+                        <p>JWT認証、bcryptパスワード、AES-256暗号化。エンタープライズレベルのセキュリティ。</p>
                     </div>
 
                     <div class="feature">
                         <h4>🚀 最新技術スタック</h4>
-                        <p>Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+ の公式サポート済み最新構成で安定稼働。</p>
+                        <p>Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+ + PostgreSQL 16の最新構成。</p>
                     </div>
                 </div>
 
@@ -243,11 +288,12 @@ async def read_root():
                     <a href="/api/system/health">📡 API状況</a>
                     <a href="/api/features">⚙️ 機能一覧</a>
                     <a href="/api/docs">📚 API文書</a>
+                    <a href="/api/auth/register">👤 新規登録</a>
                 </div>
                 
                 <div style="margin-top: 20px; font-size: 0.9em; opacity: 0.8;">
-                    <p>🎉 <strong>Python 3.13公式サポート完了！</strong></p>
-                    <p>FastAPI 0.115.9+ & Pydantic 2.8+ で最高の互換性を実現</p>
+                    <p>🎉 <strong>PostgreSQL VPS + 運営者ブラインド設計完成！</strong></p>
+                    <p>完全なユーザー管理システムで安全運用開始</p>
                 </div>
             </div>
         </body>
@@ -258,8 +304,11 @@ async def read_root():
 @app.get("/health", response_model=HealthResponse, summary="ヘルスチェック", description="サーバーの健康状態を確認")
 async def health_check():
     """ヘルスチェックエンドポイント"""
+    # データベースヘルスチェック
+    db_health = await check_database_health()
+    
     return HealthResponse(
-        status="healthy",
+        status="healthy" if db_health.get("database") == "healthy" else "degraded",
         service="X自動反応ツール",
         message="運営者ブラインド設計でプライバシー保護",
         python_version=sys.version.split()[0],
@@ -268,35 +317,46 @@ async def health_check():
         features=[
             "FastAPI 0.115.9+ (Python 3.13公式サポート)",
             "Pydantic 2.8+ (Python 3.13公式サポート)",
-            "フロントエンド配信",
-            "運営者ブラインド設計",
-            "AI搭載分析（準備中）",
-            "柔軟なデータ管理（準備中）"
-        ]
+            "PostgreSQL VPS データベース",
+            "運営者ブラインド暗号化",
+            "JWT認証システム",
+            "シンVPS + Render ハイブリッド",
+            "フロントエンド配信"
+        ],
+        database=db_health
     )
 
 @app.get("/api/system/health", response_model=APIHealthResponse, summary="API ヘルスチェック", description="APIシステムの詳細状態")
 async def api_health():
     """API ヘルスチェック"""
+    # データベースヘルスチェック
+    db_health = await check_database_health()
+    
     return APIHealthResponse(
-        status="ok",
+        status="ok" if db_health.get("database") == "healthy" else "degraded",
         service="X自動反応ツール API",
         version="1.0.0",
         python=sys.version.split()[0],
         environment=os.getenv("APP_ENV", "production"),
         privacy_mode=os.getenv("PRIVACY_MODE", "maximum"),
         operator_blind=os.getenv("OPERATOR_BLIND_ENABLED", "true"),
-        compatibility="Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+",
+        compatibility="Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+ + PostgreSQL 16",
         features_status={
             "fastapi": "✅ 0.115.9+ Running",
             "pydantic": "✅ v2.8+ Active",
             "python_3_13": "✅ Official Support",
+            "postgresql": f"✅ {db_health.get('database', 'unknown').title()}",
+            "database_response": f"{db_health.get('response_time_ms', 'N/A')}ms",
+            "vps_connection": "✅ Active" if db_health.get("connection_test") else "❌ Failed",
             "frontend": "✅ Ready" if (frontend_build_path / "index.html").exists() else "⏳ Building",
             "cors": "✅ Enabled",
             "privacy": "✅ Maximum",
             "api_docs": "✅ Available",
+            "authentication": "✅ JWT + bcrypt",
+            "encryption": "✅ AES-256-GCM",
             "compatibility": "✅ Fully Compatible"
-        }
+        },
+        database_status=db_health
     )
 
 @app.get("/api/features", response_model=FeaturesResponse, summary="機能一覧", description="システムの全機能とデプロイ情報")
@@ -308,11 +368,29 @@ async def get_features():
                 name="運営者ブラインド設計",
                 description="技術的に運営者がユーザーデータにアクセス不可",
                 status="active",
-                implementation="RSA-2048 + AES-256 暗号化"
+                implementation="PostgreSQL + AES-256-GCM暗号化"
+            ),
+            Feature(
+                name="ユーザー認証システム",
+                description="JWT + bcrypt による安全な認証機能",
+                status="active",
+                implementation="FastAPI Security + PostgreSQL"
+            ),
+            Feature(
+                name="APIキー暗号化管理",
+                description="X APIキーをユーザーパスワードベースで暗号化保存",
+                status="active",
+                implementation="PBKDF2 + AES-256-GCM"
+            ),
+            Feature(
+                name="PostgreSQL VPS",
+                description="シンVPSでの専用データベース運用",
+                status="active",
+                implementation="Ubuntu 25.04 + PostgreSQL 16"
             ),
             Feature(
                 name="Python 3.13 + FastAPI 0.115.9+",
-                description="最新Pythonバージョンでの高性能API（公式サポート）",
+                description="最新技術スタックでの高性能API（公式サポート）",
                 status="active",
                 implementation="FastAPI 0.115.9+ + Pydantic 2.8+"
             ),
@@ -330,20 +408,26 @@ async def get_features():
             )
         ],
         privacy_features=[
+            "運営者ブラインド暗号化",
+            "ユーザーパスワードベース暗号化",
             "暗号化ストレージ",
             "自動削除機能",
+            "セッション管理",
+            "Row Level Security",
             "ユーザー制御",
             "透明性保証",
             "運営者アクセス不可"
         ],
         deployment_info=DeploymentInfo(
-            platform="Render",
+            platform="Render + シンVPS",
             python_version=sys.version.split()[0],
             fastapi_version="0.115.9+",
             pydantic_version="2.8+",
+            database="PostgreSQL 16",
+            vps_provider="シンVPS (1GB/1vCPU/30GB SSD)",
             compatibility="✅ Python 3.13 Full Official Support",
             uptime="High Availability",
-            cost="Free Tier Optimized"
+            cost="VPS + Render Optimized"
         )
     )
 
@@ -358,7 +442,15 @@ async def serve_frontend(path: str):
             detail={
                 "error": "API endpoint not found",
                 "path": path,
-                "available_endpoints": ["/health", "/api/system/health", "/api/features", "/api/docs"]
+                "available_endpoints": [
+                    "/health", 
+                    "/api/system/health", 
+                    "/api/features", 
+                    "/api/docs",
+                    "/api/auth/register",
+                    "/api/auth/login",
+                    "/api/auth/me"
+                ]
             }
         )
     
@@ -371,16 +463,17 @@ async def serve_frontend(path: str):
             "message": "フロントエンドビルド中...",
             "requested_path": path,
             "status": "building",
-            "compatibility": "Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+"
+            "compatibility": "Python 3.13 + FastAPI 0.115.9+ + PostgreSQL VPS",
+            "features": "ユーザー認証・APIキー管理・運営者ブラインド設計"
         }
 
 # 開発用サーバー起動
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    print(f"🤖 X自動反応ツール - FastAPI 0.115.9+ (Python 3.13公式サポート)")
+    print(f"🤖 X自動反応ツール - FastAPI 0.115.9+ + PostgreSQL VPS")
     print(f"Python {sys.version}")
-    print(f"Pydantic 2.8+ 使用中")
+    print(f"Pydantic 2.8+ + 運営者ブラインド設計")
     uvicorn.run(
         "app:app",
         host="0.0.0.0",

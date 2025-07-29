@@ -1,328 +1,275 @@
 # 🤖 X自動反応ツール
 
-**プライバシー重視のX（旧Twitter）自動反応システム**
-
-運営者ブラインド設計により、ユーザーのAPIキーに運営者が一切アクセスできない、最高レベルのプライバシー保護を実現したX自動化ツールです。
+AI搭載のX自動化プラットフォーム - 運営者ブラインド設計でプライバシー重視
 
 ## 🌟 特徴
 
-### 🔐 **最高レベルのプライバシー保護**
-- **運営者ブラインド設計**: 技術的に運営者がユーザーデータにアクセス不可
-- **暗号化保存**: RSA-2048 + AES-256による強力な暗号化
-- **自動削除**: 設定可能な期間後に自動でデータ削除
-- **透明性**: データの保存場所・期間・アクセス権限が完全に明示
+### 🔐 運営者ブラインド設計
+- **完全なプライバシー保護**: ユーザーのX APIキーを運営者が技術的に復号不可能
+- **ユーザーパスワードベース暗号化**: AES-256-GCM + PBKDF2
+- **透明性**: オープンソースで設計の透明性を保証
 
-### 🚀 **高機能なX自動化**
-- **AI分析**: Groq AIによる高度なエンゲージメント分析
+### 🏗️ ハイブリッド構成
+- **Render**: FastAPI + React フロントエンド（無料）
+- **シンVPS**: PostgreSQL データベース（月額1,000円）
+- **コスト効率**: 高性能・安全性・コストのバランス
+
+### 🤖 AI搭載自動化
+- **Groq AI分析**: 高度なエンゲージメント評価
 - **スマートターゲティング**: 質の高いユーザーのみに自動反応
-- **安全な実行**: レート制限遵守とブラックリスト機能
-- **継続運用**: 24時間自動実行（選択可能）
+- **人間らしいタイミング**: 自然な間隔での自動化
 
-### ⚖️ **法的安全性**
-- **国内サーバー**: 日本国内でのデータ管理オプション
-- **GDPR準拠**: EU一般データ保護規則に対応
-- **運営者責任最小化**: 技術的制限により法的リスクを軽減
+### 🛡️ エンタープライズレベルのセキュリティ
+- **JWT認証**: セキュアなトークンベース認証
+- **bcryptハッシュ化**: 業界標準のパスワード保護
+- **Row Level Security**: データベースレベルでのユーザー分離
+- **fail2ban**: 攻撃対策・ブルートフォース防止
 
-## 📊 **アーキテクチャ**
+## 🚀 クイックスタート
 
-```
-ユーザー
-    ↓
-┌─────────────────┐
-│  React Frontend │ ← ローカル暗号化保存
-└─────────────────┘
-    ↓ HTTPS
-┌─────────────────┐
-│  FastAPI Backend│ ← 運営者ブラインド処理
-└─────────────────┘
-    ↓
-┌─────────────────┐
-│  PostgreSQL DB  │ ← 暗号化データのみ
-└─────────────────┘
-    ↓
-┌─────────────────┐
-│    Groq AI      │ ← 運営者一括管理
-└─────────────────┘
-```
+### 前提条件
+- Node.js 18+
+- Python 3.13
+- PostgreSQL (VPS)
 
-## 🎯 **データ保存オプション**
+### インストール
 
-### 1. **ローカル保存モード**（推奨・最高プライバシー）
-- ✅ ブラウザのローカルストレージのみ
-- ✅ サーバーには一切保存されない
-- ✅ 運営者・第三者のアクセス完全不可
-- ❌ 継続自動化には手動実行が必要
-
-### 2. **運営者ブラインドモード**（継続自動化対応）
-- ✅ 24時間継続自動実行
-- ✅ 運営者が技術的にアクセス不可
-- ✅ 暗号化サーバー保存
-- ✅ 柔軟な保持期間設定（24時間〜無期限）
-
-## 🚀 **デプロイメント**
-
-### **Renderへのデプロイ**
-
-#### **前提条件**
-- GitHubアカウント
-- Renderアカウント
-- Groq APIキー
-
-#### **ステップ1: GitHubリポジトリの準備**
-
+1. **リポジトリクローン**
 ```bash
-# 1. リポジトリをクローン
 git clone https://github.com/lilseedabe/x-automation-tool.git
 cd x-automation-tool
-
-# 2. 依存関係の確認
-pip install -r requirements.txt
-cd frontend && npm install && cd ..
-
-# 3. 環境変数ファイルの設定
-cp .env.example .env
-# .env ファイルを編集して必要な値を設定
 ```
 
-#### **ステップ2: Renderでのデプロイ**
-
-1. **Renderにログイン**
-   - [render.com](https://render.com) にアクセス
-   - GitHubアカウントで連携
-
-2. **Web Serviceの作成**
-   - 「New +」→ 「Web Service」
-   - GitHub repository: `lilseedabe/x-automation-tool`
-   - Branch: `main`
-
-3. **設定値**
-   ```
-   Name: x-automation-tool
-   Environment: Python
-   Build Command: pip install -r requirements.txt
-   Start Command: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-   ```
-
-4. **環境変数の設定**
-   ```
-   GROQ_API_KEY=your_groq_api_key_here
-   SECRET_KEY=your_32_character_secret_key
-   APP_ENV=production
-   OPERATOR_BLIND_ENABLED=true
-   PRIVACY_MODE=maximum
-   ```
-
-5. **PostgreSQLデータベースの追加**
-   - 「New +」→ 「PostgreSQL」
-   - Name: `x-automation-db`
-   - Plan: Starter (無料)
-
-6. **データベース接続**
-   - Web Serviceの環境変数に `DATABASE_URL` を追加
-   - PostgreSQLの接続文字列を設定
-
-#### **ステップ3: フロントエンドのデプロイ**
-
-1. **Static Siteの作成**
-   - 「New +」→ 「Static Site」
-   - 同じGitHubリポジトリを選択
-
-2. **設定値**
-   ```
-   Name: x-automation-frontend
-   Build Command: cd frontend && npm ci && npm run build
-   Publish Directory: frontend/build
-   ```
-
-3. **環境変数の設定**
-   ```
-   REACT_APP_API_URL=https://x-automation-tool.onrender.com
-   REACT_APP_ENV=production
-   REACT_APP_PRIVACY_MODE=maximum
-   ```
-
-### **自動デプロイの設定**
-
-`render.yaml` ファイルが含まれているため、GitHubにプッシュするだけで自動デプロイされます：
-
+2. **依存関係インストール**
 ```bash
-# GitHubにプッシュ
-git add .
-git commit -m "🚀 Initial deployment setup"
-git push origin main
-```
-
-## 🔧 **ローカル開発**
-
-### **開発環境のセットアップ**
-
-```bash
-# 1. リポジトリをクローン
-git clone https://github.com/lilseedabe/x-automation-tool.git
-cd x-automation-tool
-
-# 2. バックエンドのセットアップ
+# Python依存関係
 pip install -r requirements.txt
-cp .env.example .env
-# .env ファイルを編集
 
-# 3. フロントエンドのセットアップ
+# Node.js依存関係
 cd frontend
 npm install
-cp .env.example .env.local
-# .env.local ファイルを編集
 cd ..
-
-# 4. データベースの初期化（ローカル開発用）
-python -c "
-import asyncio
-from backend.infrastructure.operator_blind_storage import initialize_database
-asyncio.run(initialize_database())
-"
 ```
 
-### **開発サーバーの起動**
-
+3. **フロントエンドビルド**
 ```bash
-# バックエンド（ターミナル1）
-python -m uvicorn backend.main:app --reload --port 8000
+cd frontend
+npm run build
+cd ..
+```
 
-# フロントエンド（ターミナル2）
+4. **環境変数設定**
+```bash
+# .env ファイル作成
+cp .env.example .env
+
+# 必須環境変数
+DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
+SECRET_KEY=your_32_character_secret_key_here
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+5. **アプリケーション起動**
+```bash
+python app.py
+```
+
+## 🗄️ PostgreSQL VPS セットアップ
+
+### シンVPS 自動セットアップ
+
+1. **VPSにSSHログイン**
+```bash
+ssh root@your-vps-ip
+```
+
+2. **セットアップスクリプト実行**
+```bash
+wget https://raw.githubusercontent.com/lilseedabe/x-automation-tool/main/vps-setup/01-postgresql-setup.sh
+chmod +x 01-postgresql-setup.sh
+./01-postgresql-setup.sh
+```
+
+3. **データベーススキーマ適用**
+```bash
+wget https://raw.githubusercontent.com/lilseedabe/x-automation-tool/main/vps-setup/02-database-schema.sql
+sudo -u postgres psql -d x_automation_db -f 02-database-schema.sql
+```
+
+詳細な手順は [`vps-setup/03-setup-instructions.md`](vps-setup/03-setup-instructions.md) を参照してください。
+
+## 🔑 API エンドポイント
+
+### 認証
+- `POST /api/auth/register` - ユーザー登録
+- `POST /api/auth/login` - ログイン
+- `GET /api/auth/me` - ユーザー情報取得
+- `POST /api/auth/logout` - ログアウト
+
+### APIキー管理（運営者ブラインド）
+- `POST /api/auth/api-keys` - X APIキー暗号化保存
+- `GET /api/auth/api-keys` - APIキー状態取得
+- `POST /api/auth/api-keys/test` - APIキー接続テスト
+- `DELETE /api/auth/api-keys` - APIキー削除
+
+### 自動化設定
+- `GET /api/auth/automation` - 自動化設定取得
+- `PUT /api/auth/automation` - 自動化設定更新
+- `POST /api/auth/automation/toggle` - 自動化ON/OFF
+
+### システム
+- `GET /health` - ヘルスチェック
+- `GET /api/system/health` - 詳細システム状態
+- `GET /api/docs` - Swagger API文書
+
+## 🏗️ アーキテクチャ
+
+```
+┌─────────────────┐    HTTPS    ┌──────────────────┐
+│     ユーザー      │ ◄────────► │   Render (無料)   │
+└─────────────────┘             │  FastAPI + React │
+                                └─────────┬────────┘
+                                          │ 暗号化通信
+                                          ▼
+                                ┌─────────────────────┐
+                                │   シンVPS (1,000円)  │
+                                │  PostgreSQL 16 DB  │
+                                │   運営者ブラインド   │
+                                └─────────────────────┘
+```
+
+### 運営者ブラインド設計
+```
+[ユーザーパスワード] + [ソルト] 
+         ↓ PBKDF2 (100,000回)
+    [暗号化キー] 
+         ↓ AES-256-GCM
+   [暗号化APIキー] → PostgreSQL保存
+
+※運営者はユーザーパスワードを知らないため復号不可能
+```
+
+## 🛡️ セキュリティ
+
+### データ保護
+- **暗号化**: X APIキーはAES-256-GCMで暗号化
+- **パスワード**: bcrypt + ソルトでハッシュ化
+- **通信**: HTTPS強制・CORS設定
+- **データベース**: Row Level Security
+
+### アクセス制御
+- **JWT認証**: 24時間有効期限
+- **セッション管理**: PostgreSQL保存
+- **自動ログアウト**: 期限切れ自動処理
+- **リフレッシュトークン**: 30日間有効
+
+### 攻撃対策
+- **fail2ban**: ブルートフォース攻撃防止
+- **レート制限**: API呼び出し制限
+- **入力検証**: Pydantic による厳密な検証
+- **SQLインジェクション**: SQLAlchemy ORM使用
+
+## 💰 料金・コスト
+
+### 推奨構成
+- **Render (無料プラン)**: $0/月
+  - FastAPI バックエンド
+  - React フロントエンド
+  - 自動デプロイ
+  
+- **シンVPS**: 約1,000円/月
+  - 1GB RAM / 1vCPU
+  - 30GB SSD (NVMe)
+  - PostgreSQL 16
+
+### 合計コスト
+**月額約1,000円** で完全なプライバシー保護とエンタープライズレベルのセキュリティを実現
+
+## 🔧 開発
+
+### 技術スタック
+- **バックエンド**: FastAPI 0.115.9+ (Python 3.13)
+- **フロントエンド**: React 18 + Tailwind CSS
+- **データベース**: PostgreSQL 16 + asyncpg
+- **認証**: JWT + bcrypt
+- **暗号化**: AES-256-GCM + PBKDF2
+- **AI**: Groq LLM
+- **デプロイ**: Render + VPS
+
+### 開発環境セットアップ
+```bash
+# 開発モード起動
+export APP_ENV=development
+export DB_DEBUG=true
+python app.py
+
+# フロントエンド開発サーバー
 cd frontend
 npm start
 ```
 
-アプリケーションは以下のURLでアクセス可能：
-- フロントエンド: http://localhost:3000
-- バックエンドAPI: http://localhost:8000
-- API文書: http://localhost:8000/docs
-
-## 🔑 **API設定**
-
-### **X (Twitter) API**
-ユーザーが各自で取得・設定：
-
-1. [X Developer Portal](https://developer.twitter.com/) でアプリ作成
-2. 以下の4つのキーを取得：
-   - API Key (Consumer Key)
-   - API Key Secret (Consumer Secret)
-   - Access Token
-   - Access Token Secret
-3. アプリの設定画面で入力
-
-### **Groq AI API**
-運営者が一括管理：
-
-1. [Groq Console](https://console.groq.com/) でAPIキー取得
-2. Renderの環境変数 `GROQ_API_KEY` に設定
-3. ユーザーは設定不要
-
-## 🛡️ **セキュリティ**
-
-### **データ保護**
-- **暗号化アルゴリズム**: RSA-2048 + AES-256
-- **キー管理**: ユーザー専用パスワード
-- **保存場所**: 選択可能（ローカル or 暗号化サーバー）
-- **アクセス制御**: 運営者は技術的にアクセス不可
-
-### **プライバシー保証**
-- **運営者ブラインド**: APIキーにアクセス不可
-- **データ最小化**: 必要最小限のデータのみ保存
-- **自動削除**: 設定期間後に自動削除
-- **透明性**: 全ての処理が明示
-
-### **セキュリティベストプラクティス**
-- HTTPS通信の強制
-- CSRFプロテクション
-- レート制限
-- 入力値検証
-- セキュリティヘッダー
-
-## 📈 **監視・運用**
-
-### **ヘルスチェック**
-- API: `/api/system/health`
-- フロントエンド: 自動ヘルスチェック
-- データベース: 接続確認
-
-### **ログ・監視**
-- アプリケーションログ
-- エラートラッキング
-- パフォーマンス監視
-- アップタイム監視
-
-### **バックアップ**
-- データベース: 自動日次バックアップ
-- 設定: GitHubリポジトリで管理
-- ログ: Renderで自動管理
-
-## 💰 **コスト**
-
-### **Render無料プラン活用**
-- **Web Service**: 750時間/月（約31日）
-- **Static Site**: 100GBバンドウィズ/月
-- **PostgreSQL**: 1GB + 1,000,000行
-- **推定月額**: $0（無料プランのみ）
-
-### **有料プラン（必要に応じて）**
-- **Web Service**: $7/月〜
-- **PostgreSQL**: $7/月〜
-- **プロフェッショナル機能**: カスタムドメイン等
-
-## 🤝 **コントリビューション**
-
-### **開発に参加する**
-
+### テスト
 ```bash
-# 1. フォーク
-gh repo fork lilseedabe/x-automation-tool
+# バックエンドテスト
+pytest
 
-# 2. ブランチ作成
-git checkout -b feature/new-feature
-
-# 3. 開発・テスト
-# コード変更
-
-# 4. プルリクエスト
-git push origin feature/new-feature
-# GitHubでPRを作成
+# フロントエンドテスト
+cd frontend
+npm test
 ```
 
-### **イシューの報告**
-- [GitHub Issues](https://github.com/lilseedabe/x-automation-tool/issues)
-- バグ報告・機能要望・質問
+## 📋 環境変数
 
-## 📄 **ライセンス**
+### 必須
+- `DATABASE_URL` - PostgreSQL接続文字列
+- `SECRET_KEY` - JWT署名用秘密鍵 (32文字以上)
+- `GROQ_API_KEY` - Groq AI APIキー
 
-MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照
+### オプション
+- `APP_ENV` - 環境 (development/production)
+- `PRIVACY_MODE` - プライバシーモード (maximum)
+- `OPERATOR_BLIND_ENABLED` - 運営者ブラインド (true)
+- `DB_DEBUG` - データベースデバッグ (false)
 
-## 🔗 **リンク**
+## 🤝 コントリビューション
 
-- **本番環境**: https://x-automation-tool.onrender.com
-- **API文書**: https://x-automation-tool.onrender.com/docs
-- **GitHub**: https://github.com/lilseedabe/x-automation-tool
-- **Issues**: https://github.com/lilseedabe/x-automation-tool/issues
+1. フォーク
+2. フィーチャーブランチ作成 (`git checkout -b feature/amazing-feature`)
+3. コミット (`git commit -m 'Add amazing feature'`)
+4. プッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエスト作成
 
-## 📞 **サポート**
+## 📄 ライセンス
 
-### **よくある質問**
+このプロジェクトはMITライセンスの下で公開されています。
 
-**Q: APIキーは安全ですか？**
-A: はい。運営者ブラインド設計により、技術的に運営者がアクセスできません。
+## 🙏 謝辞
 
-**Q: 無料で使えますか？**
-A: はい。Renderの無料プランで十分に運用可能です。
+- [FastAPI](https://fastapi.tiangolo.com/) - 高性能Webフレームワーク
+- [React](https://reactjs.org/) - ユーザーインターフェース
+- [PostgreSQL](https://www.postgresql.org/) - 堅牢なデータベース
+- [Groq](https://groq.com/) - 高速AI推論
+- [Render](https://render.com/) - 簡単デプロイプラットフォーム
+- [シンVPS](https://www.shin-vps.jp/) - 高性能VPS
 
-**Q: データはいつまで保存されますか？**
-A: ユーザーが選択した期間（24時間〜無期限）後に自動削除されます。
+## 📞 サポート
 
-**Q: 海外のサーバーにデータが送信されますか？**
-A: Renderは米国のサービスですが、運営者ブラインド設計により最高レベルの保護を実現しています。
-
-### **お問い合わせ**
-- GitHub Issues: 技術的な質問・バグ報告
-- メール: リポジトリのContacts参照
+- **Issues**: [GitHub Issues](https://github.com/lilseedabe/x-automation-tool/issues)
+- **Wiki**: [詳細ドキュメント](https://github.com/lilseedabe/x-automation-tool/wiki)
+- **Security**: セキュリティ問題は非公開で報告してください
 
 ---
 
-**🔐 プライバシー保証: このツールは運営者が技術的にユーザーデータにアクセスできない設計になっています。安心してご利用ください。**
+## ⚠️ 免責事項
+
+このツールは教育・研究目的で提供されています。X（旧Twitter）の利用規約を遵守し、適切に使用してください。自動化による問題は使用者の責任となります。
+
+## 🏆 実績
+
+- ✅ Python 3.13 公式サポート
+- ✅ 運営者ブラインド暗号化実装
+- ✅ エンタープライズレベルセキュリティ
+- ✅ 月額1,000円での高性能運用
+- ✅ 完全なプライバシー保護
+
+**🎉 X自動反応ツール - プライバシーファーストなソーシャルメディア自動化プラットフォーム**
