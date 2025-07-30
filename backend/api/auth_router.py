@@ -263,7 +263,7 @@ async def change_password(
         user = result.scalar_one()
         
         user.password_hash = new_password_hash
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
         
         await session.commit()
         
