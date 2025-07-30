@@ -1,6 +1,6 @@
 """
 👤 X自動反応ツール - ユーザー管理サービス
-運営者ブラインド設計・暗号化対応
+運営者ブラインド設計・暗号化対応（修正版）
 """
 
 import os
@@ -38,12 +38,18 @@ class UserService:
         self.jwt_algorithm = "HS256"
         self.jwt_expire_hours = 24
         self.refresh_token_expire_days = 30
+        
+        # デバッグ用ログ
+        logger.info(f"🔧 UserService初期化 - JWT Secret設定: {'設定済み' if len(self.jwt_secret) > 20 else '未設定'}")
     
     async def create_user(self, user_data: UserCreate, session: AsyncSession) -> UserResponse:
         """新規ユーザー作成"""
         try:
+            logger.info(f"👤 ユーザー作成開始: {user_data.username}")
+            
             # パスワードハッシュ化
             password_hash = self._hash_password(user_data.password)
+            logger.debug(f"🔐 パスワードハッシュ化完了: {user_data.username}")
             
             # ユーザー作成
             db_user = User(
@@ -57,6 +63,7 @@ class UserService:
             
             session.add(db_user)
             await session.flush()  # IDを取得するため
+            logger.debug(f"👤 ユーザーDB保存完了: {db_user.id}")
             
             # デフォルト自動化設定作成
             automation_settings = AutomationSettings(
@@ -67,7 +74,7 @@ class UserService:
             
             await session.commit()
             
-            logger.info(f"👤 新規ユーザー作成: {user_data.username}")
+            logger.info(f"✅ 新規ユーザー作成完了: {user_data.username} (ID: {db_user.id})")
             return UserResponse.model_validate(db_user)
             
         except Exception as e:
@@ -78,6 +85,8 @@ class UserService:
     async def authenticate_user(self, username_or_email: str, password: str, session: AsyncSession) -> Optional[UserResponse]:
         """ユーザー認証"""
         try:
+            logger.info(f"🔑 認証開始: {username_or_email}")
+            
             # ユーザー検索（username または email）
             stmt = select(User).where(
                 (User.username == username_or_email) | 
@@ -88,29 +97,39 @@ class UserService:
             user = result.scalar_one_or_none()
             
             if not user:
+                logger.warning(f"❌ ユーザーが見つかりません: {username_or_email}")
                 return None
+            
+            logger.debug(f"👤 ユーザー発見: ID={user.id}, username={user.username}")
             
             # パスワード検証
             if not self._verify_password(password, user.password_hash):
+                logger.warning(f"❌ パスワード不一致: {username_or_email}")
                 return None
+            
+            logger.debug(f"✅ パスワード検証成功: {user.username}")
             
             # 最終ログイン時刻更新
             user.last_login = datetime.now(timezone.utc)
             await session.commit()
             
-            logger.info(f"🔑 ユーザー認証成功: {user.username}")
+            logger.info(f"✅ ユーザー認証成功: {user.username} (ID: {user.id})")
             return UserResponse.model_validate(user)
             
         except Exception as e:
-            logger.error(f"❌ ユーザー認証エラー: {str(e)}")
+            logger.error(f"❌ ユーザー認証エラー ({username_or_email}): {str(e)}")
             return None
     
     async def create_session(self, user_id: UUID, ip_address: str, user_agent: str, session: AsyncSession) -> Dict[str, str]:
         """セッション作成（JWT + DB保存）"""
         try:
+            logger.info(f"🎫 セッション作成開始: user_id={user_id}")
+            
             # JWT トークン生成
             access_token = self._create_access_token(user_id)
             refresh_token = secrets.token_urlsafe(32)
+            
+            logger.debug(f"🎫 JWT生成完了: {access_token[:20]}...")
             
             # セッション情報をDBに保存
             db_session = UserSession(
@@ -126,6 +145,8 @@ class UserService:
             session.add(db_session)
             await session.commit()
             
+            logger.info(f"✅ セッション作成完了: user_id={user_id}, session_id={db_session.id}")
+            
             return {
                 "access_token": access_token,
                 "refresh_token": refresh_token,
@@ -135,15 +156,25 @@ class UserService:
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"❌ セッション作成エラー: {str(e)}")
+            logger.error(f"❌ セッション作成エラー (user_id={user_id}): {str(e)}")
             raise
     
     async def verify_session(self, token: str, session: AsyncSession) -> Optional[UserResponse]:
-        """セッション検証"""
+        """セッション検証（改良版）"""
         try:
+            logger.debug(f"🔍 セッション検証開始: {token[:20]}...")
+            
             # JWT デコード
-            payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
-            user_id = UUID(payload.get("sub"))
+            try:
+                payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
+                user_id = UUID(payload.get("sub"))
+                logger.debug(f"🎫 JWT検証成功: user_id={user_id}")
+            except jwt.ExpiredSignatureError:
+                logger.warning("⏰ JWT期限切れ")
+                return None
+            except jwt.JWTError as e:
+                logger.warning(f"❌ JWT無効: {str(e)}")
+                return None
             
             # ユーザー存在確認
             stmt = select(User).where(User.id == user_id, User.is_active == True)
@@ -151,9 +182,12 @@ class UserService:
             user = result.scalar_one_or_none()
             
             if not user:
+                logger.warning(f"❌ ユーザーが見つからないか非アクティブ: {user_id}")
                 return None
             
-            # セッション存在確認
+            logger.debug(f"👤 ユーザー確認成功: {user.username}")
+            
+            # セッション存在確認（JWTが有効なら軽量チェック）
             token_prefix = token[:50]
             stmt = select(UserSession).where(
                 UserSession.user_id == user_id,
@@ -165,37 +199,68 @@ class UserService:
             user_session = result.scalar_one_or_none()
             
             if not user_session:
+                logger.warning(f"❌ セッションが見つからないか期限切れ: user_id={user_id}")
+                # JWTが有効でもDBセッションがない場合は、新しいセッションを作成する選択もある
+                # ここでは厳密にチェック
                 return None
             
             # 最終アクセス時刻更新
             user_session.last_accessed = datetime.now(timezone.utc)
             await session.commit()
             
+            logger.debug(f"✅ セッション検証完了: {user.username}")
             return UserResponse.model_validate(user)
             
-        except jwt.ExpiredSignatureError:
-            logger.warning("🔑 期限切れトークン")
-            return None
-        except jwt.JWTError as e:
-            logger.warning(f"🔑 無効なトークン: {str(e)}")
-            return None
         except Exception as e:
             logger.error(f"❌ セッション検証エラー: {str(e)}")
+            return None
+    
+    async def verify_session_simple(self, token: str, session: AsyncSession) -> Optional[UserResponse]:
+        """簡素化されたセッション検証（デバッグ用）"""
+        try:
+            logger.debug(f"🔍 簡易セッション検証: {token[:20]}...")
+            
+            # JWT デコードのみでセッション検証
+            payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
+            user_id = UUID(payload.get("sub"))
+            
+            # ユーザー存在確認
+            stmt = select(User).where(User.id == user_id, User.is_active == True)
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            
+            if user:
+                logger.debug(f"✅ 簡易セッション検証成功: {user.username}")
+                return UserResponse.model_validate(user)
+            
+            return None
+            
+        except (jwt.ExpiredSignatureError, jwt.JWTError) as e:
+            logger.warning(f"❌ 簡易セッション検証失敗: {str(e)}")
             return None
     
     async def logout_user(self, token: str, session: AsyncSession) -> bool:
         """ユーザーログアウト"""
         try:
+            logger.info(f"👋 ログアウト開始: {token[:20]}...")
+            
             token_prefix = token[:50]
             stmt = update(UserSession).where(
                 UserSession.session_token == token_prefix
-            ).values(is_active=False)
+            ).values(
+                is_active=False,
+                updated_at=datetime.now(timezone.utc)
+            )
             
-            await session.execute(stmt)
+            result = await session.execute(stmt)
             await session.commit()
             
-            logger.info("🔑 ユーザーログアウト")
-            return True
+            if result.rowcount > 0:
+                logger.info(f"✅ ログアウト成功: {result.rowcount}件のセッション無効化")
+                return True
+            else:
+                logger.warning("⚠️ ログアウト: 該当セッションなし")
+                return False
             
         except Exception as e:
             logger.error(f"❌ ログアウトエラー: {str(e)}")
@@ -203,33 +268,52 @@ class UserService:
     
     def _hash_password(self, password: str) -> str:
         """パスワードハッシュ化"""
-        salt = bcrypt.gensalt()
-        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+        try:
+            salt = bcrypt.gensalt(rounds=12)  # セキュリティ強化
+            hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+            return hashed.decode('utf-8')
+        except Exception as e:
+            logger.error(f"❌ パスワードハッシュ化エラー: {str(e)}")
+            raise
     
     def _verify_password(self, password: str, hashed: str) -> bool:
         """パスワード検証"""
-        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+        except Exception as e:
+            logger.error(f"❌ パスワード検証エラー: {str(e)}")
+            return False
     
     def _create_access_token(self, user_id: UUID) -> str:
         """JWTアクセストークン作成"""
-        expire = datetime.now(timezone.utc) + timedelta(hours=self.jwt_expire_hours)
-        payload = {
-            "sub": str(user_id),
-            "exp": expire,
-            "iat": datetime.now(timezone.utc),
-            "type": "access"
-        }
-        return jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+        try:
+            now = datetime.now(timezone.utc)
+            expire = now + timedelta(hours=self.jwt_expire_hours)
+            payload = {
+                "sub": str(user_id),
+                "exp": expire,
+                "iat": now,
+                "type": "access"
+            }
+            token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+            logger.debug(f"🎫 JWT作成成功: user_id={user_id}, expires={expire}")
+            return token
+        except Exception as e:
+            logger.error(f"❌ JWT作成エラー: {str(e)}")
+            raise
 
 class APIKeyService:
     """APIキー管理サービス（運営者ブラインド設計）"""
     
     def __init__(self):
         self.encryption_algorithm = "AES-256-GCM"
+        logger.info("🔐 APIKeyService初期化完了")
     
     async def store_api_keys(self, user_id: UUID, api_data: APIKeyCreate, session: AsyncSession) -> APIKeyResponse:
         """APIキー暗号化保存（運営者ブラインド）"""
         try:
+            logger.info(f"🔐 APIキー保存開始: user_id={user_id}")
+            
             # ユーザーパスワードベースの暗号化キー生成
             encryption_key, salt = self._derive_encryption_key(api_data.user_password, user_id)
             
@@ -240,7 +324,9 @@ class APIKeyService:
             encrypted_access_token_secret = self._encrypt_data(api_data.access_token_secret, encryption_key)
             
             # 既存APIキー削除（1ユーザー1セット）
-            await session.execute(delete(UserAPIKey).where(UserAPIKey.user_id == user_id))
+            delete_result = await session.execute(delete(UserAPIKey).where(UserAPIKey.user_id == user_id))
+            if delete_result.rowcount > 0:
+                logger.info(f"🗑️ 既存APIキー削除: {delete_result.rowcount}件")
             
             # 暗号化されたAPIキー保存
             db_api_key = UserAPIKey(
@@ -256,17 +342,19 @@ class APIKeyService:
             session.add(db_api_key)
             await session.commit()
             
-            logger.info(f"🔐 APIキー暗号化保存完了: user_id={user_id}")
+            logger.info(f"✅ APIキー暗号化保存完了: user_id={user_id}")
             return APIKeyResponse.model_validate(db_api_key)
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"❌ APIキー保存エラー: {str(e)}")
+            logger.error(f"❌ APIキー保存エラー (user_id={user_id}): {str(e)}")
             raise
     
     async def get_decrypted_api_keys(self, user_id: UUID, user_password: str, session: AsyncSession) -> Optional[Dict[str, str]]:
         """APIキー復号（ユーザーパスワード必要）"""
         try:
+            logger.info(f"🔓 APIキー復号開始: user_id={user_id}")
+            
             # APIキー取得
             stmt = select(UserAPIKey).where(
                 UserAPIKey.user_id == user_id,
@@ -276,22 +364,32 @@ class APIKeyService:
             api_key_record = result.scalar_one_or_none()
             
             if not api_key_record:
+                logger.warning(f"❌ APIキーレコードが見つかりません: user_id={user_id}")
                 return None
             
             # 暗号化キー復元
-            encryption_key = self._derive_encryption_key_from_salt(user_password, user_id, api_key_record.key_salt)
+            try:
+                encryption_key = self._derive_encryption_key_from_salt(user_password, user_id, api_key_record.key_salt)
+            except Exception as e:
+                logger.error(f"❌ 暗号化キー復元エラー: {str(e)}")
+                return None
             
             # 復号
-            api_key = self._decrypt_data(api_key_record.encrypted_api_key, encryption_key)
-            api_secret = self._decrypt_data(api_key_record.encrypted_api_secret, encryption_key)
-            access_token = self._decrypt_data(api_key_record.encrypted_access_token, encryption_key)
-            access_token_secret = self._decrypt_data(api_key_record.encrypted_access_token_secret, encryption_key)
+            try:
+                api_key = self._decrypt_data(api_key_record.encrypted_api_key, encryption_key)
+                api_secret = self._decrypt_data(api_key_record.encrypted_api_secret, encryption_key)
+                access_token = self._decrypt_data(api_key_record.encrypted_access_token, encryption_key)
+                access_token_secret = self._decrypt_data(api_key_record.encrypted_access_token_secret, encryption_key)
+            except Exception as e:
+                logger.error(f"❌ APIキー復号エラー: {str(e)}")
+                return None
             
             # 最終使用時刻更新
             api_key_record.last_used = datetime.now(timezone.utc)
             api_key_record.usage_count += 1
             await session.commit()
             
+            logger.info(f"✅ APIキー復号完了: user_id={user_id}")
             return {
                 "api_key": api_key,
                 "api_secret": api_secret,
@@ -300,7 +398,7 @@ class APIKeyService:
             }
             
         except Exception as e:
-            logger.error(f"❌ APIキー復号エラー: {str(e)}")
+            logger.error(f"❌ APIキー復号エラー (user_id={user_id}): {str(e)}")
             return None
     
     async def get_api_key_status(self, user_id: UUID, session: AsyncSession) -> Optional[APIKeyResponse]:
@@ -316,7 +414,7 @@ class APIKeyService:
             return APIKeyResponse.model_validate(api_key_record)
             
         except Exception as e:
-            logger.error(f"❌ APIキー状態取得エラー: {str(e)}")
+            logger.error(f"❌ APIキー状態取得エラー (user_id={user_id}): {str(e)}")
             return None
     
     def _derive_encryption_key(self, password: str, user_id: UUID) -> Tuple[bytes, bytes]:
@@ -377,6 +475,9 @@ class APIKeyService:
 class AutomationService:
     """自動化設定管理サービス"""
     
+    def __init__(self):
+        logger.info("⚙️ AutomationService初期化完了")
+    
     async def get_automation_settings(self, user_id: UUID, session: AsyncSession) -> Optional[AutomationSettingsResponse]:
         """自動化設定取得"""
         try:
@@ -385,12 +486,13 @@ class AutomationService:
             settings = result.scalar_one_or_none()
             
             if not settings:
+                logger.info(f"⚙️ 自動化設定が見つかりません: user_id={user_id}")
                 return None
             
             return AutomationSettingsResponse.model_validate(settings)
             
         except Exception as e:
-            logger.error(f"❌ 自動化設定取得エラー: {str(e)}")
+            logger.error(f"❌ 自動化設定取得エラー (user_id={user_id}): {str(e)}")
             return None
     
     async def update_automation_settings(self, user_id: UUID, settings_data: AutomationSettingsCreate, session: AsyncSession) -> AutomationSettingsResponse:
@@ -404,20 +506,21 @@ class AutomationService:
                 # 新規作成
                 settings = AutomationSettings(user_id=user_id, **settings_data.model_dump())
                 session.add(settings)
+                logger.info(f"⚙️ 新規自動化設定作成: user_id={user_id}")
             else:
                 # 更新
                 for field, value in settings_data.model_dump().items():
                     setattr(settings, field, value)
                 settings.updated_at = datetime.now(timezone.utc)
+                logger.info(f"⚙️ 自動化設定更新: user_id={user_id}")
             
             await session.commit()
             
-            logger.info(f"⚙️ 自動化設定更新: user_id={user_id}")
             return AutomationSettingsResponse.model_validate(settings)
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"❌ 自動化設定更新エラー: {str(e)}")
+            logger.error(f"❌ 自動化設定更新エラー (user_id={user_id}): {str(e)}")
             raise
     
     async def toggle_automation(self, user_id: UUID, enabled: bool, session: AsyncSession) -> bool:
@@ -436,12 +539,13 @@ class AutomationService:
             if result.rowcount > 0:
                 logger.info(f"🎛️ 自動化{'有効' if enabled else '無効'}: user_id={user_id}")
                 return True
-            
-            return False
+            else:
+                logger.warning(f"⚠️ 自動化設定が見つかりません: user_id={user_id}")
+                return False
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"❌ 自動化切り替えエラー: {str(e)}")
+            logger.error(f"❌ 自動化切り替えエラー (user_id={user_id}): {str(e)}")
             return False
 
 # シングルトンインスタンス
