@@ -24,6 +24,10 @@
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     
+    <!-- CSS優先読み込み設定 -->
+    <link rel="preload" href="%PUBLIC_URL%/static/css/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="%PUBLIC_URL%/static/css/main.css"></noscript>
+    
     <title>🤖 X自動反応ツール - AI Powered</title>
     
     <!-- MetaMask完全ブロック用スクリプト -->
@@ -141,7 +145,7 @@
       })();
     </script>
     
-    <!-- CSS Variables for Theme -->
+    <!-- Critical CSS + FOUC防止スタイル -->
     <style>
       :root {
         --primary-color: #3b82f6;
@@ -159,6 +163,210 @@
         --gray-700: #374151;
         --gray-800: #1f2937;
         --gray-900: #111827;
+      }
+      
+      /* FOUC防止 - Tailwind読み込み前の基本スタイル */
+      * {
+        box-sizing: border-box;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f8fafc;
+        color: #1f2937;
+        line-height: 1.6;
+      }
+      
+      /* 基本レイアウト - Tailwind読み込み前に適用 */
+      .min-h-screen {
+        min-height: 100vh;
+      }
+      
+      .flex {
+        display: flex;
+      }
+      
+      .items-center {
+        align-items: center;
+      }
+      
+      .justify-center {
+        justify-content: center;
+      }
+      
+      .flex-col {
+        flex-direction: column;
+      }
+      
+      .bg-white {
+        background-color: white;
+      }
+      
+      .rounded-xl {
+        border-radius: 0.75rem;
+      }
+      
+      .shadow-lg {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      }
+      
+      .p-6 {
+        padding: 1.5rem;
+      }
+      
+      .p-8 {
+        padding: 2rem;
+      }
+      
+      .mb-6 {
+        margin-bottom: 1.5rem;
+      }
+      
+      .mb-4 {
+        margin-bottom: 1rem;
+      }
+      
+      .mb-2 {
+        margin-bottom: 0.5rem;
+      }
+      
+      .text-xl {
+        font-size: 1.25rem;
+        line-height: 1.75rem;
+      }
+      
+      .text-lg {
+        font-size: 1.125rem;
+        line-height: 1.75rem;
+      }
+      
+      .text-sm {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+      }
+      
+      .font-bold {
+        font-weight: 700;
+      }
+      
+      .font-semibold {
+        font-weight: 600;
+      }
+      
+      .font-medium {
+        font-weight: 500;
+      }
+      
+      .text-gray-900 {
+        color: #111827;
+      }
+      
+      .text-gray-600 {
+        color: #4b5563;
+      }
+      
+      .text-gray-500 {
+        color: #6b7280;
+      }
+      
+      .text-blue-600 {
+        color: #2563eb;
+      }
+      
+      .text-white {
+        color: white;
+      }
+      
+      .bg-blue-600 {
+        background-color: #2563eb;
+      }
+      
+      .bg-blue-50 {
+        background-color: #eff6ff;
+      }
+      
+      .border {
+        border-width: 1px;
+      }
+      
+      .border-gray-200 {
+        border-color: #e5e7eb;
+      }
+      
+      .border-gray-300 {
+        border-color: #d1d5db;
+      }
+      
+      .w-full {
+        width: 100%;
+      }
+      
+      .max-w-md {
+        max-width: 28rem;
+      }
+      
+      .mx-auto {
+        margin-left: auto;
+        margin-right: auto;
+      }
+      
+      .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 1rem;
+      }
+      
+      .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0.5rem;
+      }
+      
+      /* フォーム要素の基本スタイル */
+      input[type="email"],
+      input[type="password"],
+      input[type="text"] {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+      }
+      
+      input[type="email"]:focus,
+      input[type="password"]:focus,
+      input[type="text"]:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+      }
+      
+      button {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out, transform 0.15s ease-in-out;
+      }
+      
+      button:hover {
+        transform: translateY(-1px);
+      }
+      
+      button:active {
+        transform: translateY(0);
+      }
+      
+      .btn-primary {
+        background-color: #2563eb;
+        color: white;
+      }
+      
+      .btn-primary:hover {
+        background-color: #1d4ed8;
       }
       
       /* Loading状態のスタイル */
@@ -195,6 +403,11 @@
         100% { transform: rotate(360deg); }
       }
       
+      /* Tailwindクラス読み込み済み判定用 */
+      .tailwind-indicator {
+        display: none;
+      }
+      
       /* MetaMask関連要素を完全に非表示 */
       [data-metamask],
       [class*="metamask"],
@@ -208,6 +421,16 @@
         left: -9999px !important;
         top: -9999px !important;
         pointer-events: none !important;
+      }
+      
+      /* CSS読み込み完了まで非表示 */
+      #root {
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+      }
+      
+      #root.css-loaded {
+        opacity: 1;
       }
     </style>
   </head>
@@ -230,14 +453,41 @@
       </div>
     </div>
     
+    <!-- Tailwind読み込み確認用の隠し要素 -->
+    <div class="hidden tailwind-indicator"></div>
+    
     <!-- メインアプリケーション -->
     <div id="root"></div>
     
-    <!-- ロード完了後に読み込み画面を非表示にする -->
+    <!-- CSS読み込み確認・ロード完了制御スクリプト -->
     <script>
-      window.addEventListener('load', function() {
-        setTimeout(function() {
-          var loading = document.getElementById('loading');
+      (function() {
+        'use strict';
+        
+        let cssLoadAttempts = 0;
+        const maxAttempts = 50; // 最大5秒待機
+        
+        function checkTailwindLoaded() {
+          // Tailwind CSSの読み込み確認
+          const indicator = document.querySelector('.tailwind-indicator');
+          if (indicator) {
+            const computedStyle = window.getComputedStyle(indicator);
+            if (computedStyle.display === 'none') {
+              // Tailwind読み込み完了
+              return true;
+            }
+          }
+          return false;
+        }
+        
+        function showApp() {
+          const loading = document.getElementById('loading');
+          const root = document.getElementById('root');
+          
+          if (root) {
+            root.classList.add('css-loaded');
+          }
+          
           if (loading) {
             loading.style.opacity = '0';
             loading.style.transition = 'opacity 0.5s ease-out';
@@ -245,19 +495,50 @@
               loading.style.display = 'none';
             }, 500);
           }
-        }, 1000);
-      });
-      
-      // React アプリが読み込まれたら確実に非表示にする
-      document.addEventListener('DOMContentLoaded', function() {
+        }
+        
+        function waitForCSS() {
+          cssLoadAttempts++;
+          
+          if (checkTailwindLoaded() || cssLoadAttempts >= maxAttempts) {
+            showApp();
+          } else {
+            setTimeout(waitForCSS, 100);
+          }
+        }
+        
+        // DOM読み込み完了後にCSS確認開始
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', waitForCSS);
+        } else {
+          waitForCSS();
+        }
+        
+        // フォールバック: 2秒後に強制表示
         setTimeout(function() {
-          var loading = document.getElementById('loading');
-          var root = document.getElementById('root');
-          if (loading && root && root.children.length > 0) {
-            loading.style.display = 'none';
+          if (cssLoadAttempts < maxAttempts) {
+            showApp();
           }
         }, 2000);
-      });
+        
+        // React アプリマウント検知
+        const observer = new MutationObserver(function(mutations) {
+          const root = document.getElementById('root');
+          if (root && root.children.length > 0) {
+            showApp();
+            observer.disconnect();
+          }
+        });
+        
+        // root要素の監視開始
+        const rootElement = document.getElementById('root');
+        if (rootElement) {
+          observer.observe(rootElement, {
+            childList: true,
+            subtree: true
+          });
+        }
+      })();
     </script>
   </body>
 </html>
