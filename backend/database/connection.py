@@ -6,7 +6,7 @@
 import os
 import logging
 from typing import AsyncGenerator, Optional
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -104,7 +104,8 @@ class DatabaseManager:
         """データベース接続テスト"""
         try:
             async with self.async_engine.begin() as conn:
-                result = await conn.execute("SELECT 1 as test")
+                # text()でSQL文字列をラップ
+                result = await conn.execute(text("SELECT 1 as test"))
                 test_value = result.scalar()
                 
             if test_value == 1:
@@ -279,12 +280,11 @@ async def cleanup_expired_data():
     """期限切れデータのクリーンアップ"""
     try:
         async with db_manager.get_session() as session:
-            # 期限切れセッション削除
-            result = await session.execute("SELECT cleanup_expired_sessions()")
+            # text()でSQL文字列をラップ
+            result = await session.execute(text("SELECT cleanup_expired_sessions()"))
             deleted_sessions = result.scalar()
             
-            # 古いログ削除
-            result = await session.execute("SELECT cleanup_old_logs()")
+            result = await session.execute(text("SELECT cleanup_old_logs()"))
             deleted_logs = result.scalar()
             
             logger.info(f"🧹 クリーンアップ完了: セッション{deleted_sessions}件, ログ{deleted_logs}件削除")
