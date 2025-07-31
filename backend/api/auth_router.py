@@ -1,5 +1,5 @@
 """
-🔐 X自動反応ツール - 認証APIルーター（完全修正版）
+🔐 X自動反応ツール - 認証APIルーター（ログアウト修正版）
 ユーザー管理・APIキー管理・セッション管理
 """
 
@@ -272,13 +272,47 @@ async def debug_login(request: Request):
 
 @router.post("/logout", summary="ログアウト")
 async def logout_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
     session: AsyncSession = Depends(get_db_session)
 ):
-    """ユーザーログアウト"""
+    """ユーザーログアウト（修正版）"""
     try:
         logger.info(f"👋 ログアウト開始")
-        success = await user_service.logout_user(credentials.credentials, session)
+        
+        # 🔧 修正1: Authorizationヘッダーから直接トークン取得
+        authorization = request.headers.get("Authorization")
+        logger.info(f"🔍 Authorization header: {authorization}")
+        
+        if not authorization:
+            logger.warning("❌ Authorizationヘッダーがありません")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="認証トークンが必要です",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if not authorization.startswith("Bearer "):
+            logger.warning(f"❌ 無効なAuthorizationフォーマット: {authorization}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Bearer トークンが必要です",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 🔧 修正2: トークン抽出とチェック
+        token = authorization.replace("Bearer ", "")
+        logger.info(f"🎫 抽出されたトークン: {token[:20] if token else 'None'}...")
+        
+        if not token or token in ["null", "undefined", ""]:
+            logger.warning(f"❌ 無効なトークン: {token}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="有効なトークンが必要です",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 🔧 修正3: ログアウト処理実行
+        success = await user_service.logout_user(token, session)
         
         if success:
             logger.info(f"✅ ログアウト成功")
@@ -298,6 +332,27 @@ async def logout_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"ログアウトエラー: {str(e)}"
         )
+
+@router.post("/debug-logout", summary="デバッグ用ログアウト")
+async def debug_logout(request: Request):
+    """デバッグ用：ログアウト時のヘッダー確認"""
+    try:
+        headers = dict(request.headers)
+        authorization = request.headers.get("Authorization")
+        
+        logger.info(f"🐛 Debug Logout - Headers: {headers}")
+        logger.info(f"🐛 Debug Logout - Authorization: {authorization}")
+        
+        return {
+            "success": True,
+            "headers": headers,
+            "authorization": authorization,
+            "method": request.method,
+            "url": str(request.url)
+        }
+    except Exception as e:
+        logger.error(f"🐛 Debug logout error: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 @router.get("/me", response_model=UserResponse, summary="ユーザー情報取得")
 async def get_current_user_info(
@@ -326,7 +381,7 @@ async def update_current_user(
         for field, value in update_data.items():
             setattr(user, field, value)
         
-        user.updated_at = datetime.now(timezone.utc)  # 修正済み
+        user.updated_at = datetime.now(timezone.utc)
         await session.commit()
         
         logger.info(f"✅ ユーザー情報更新完了: {current_user.username}")
@@ -373,7 +428,7 @@ async def change_password(
         user = result.scalar_one()
         
         user.password_hash = new_password_hash
-        user.updated_at = datetime.now(timezone.utc)  # 修正済み
+        user.updated_at = datetime.now(timezone.utc)
         
         await session.commit()
         
