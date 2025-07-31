@@ -1,5 +1,5 @@
 /**
- * 🤖 X自動反応ツール - 認証フック
+ * 🤖 X自動反応ツール - 認証フック（修正版）
  * 
  * ユーザー認証とセッション管理
  */
@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }) => {
     try {
       // localStorage から認証情報を確認
       const savedUser = localStorage.getItem('user');
-      const savedToken = localStorage.getItem('token');
+      const savedToken = localStorage.getItem('access_token'); // 🔧 キー名を修正
       
       if (savedUser && savedToken) {
         setUser(JSON.parse(savedUser));
@@ -84,7 +84,7 @@ export const AuthProvider = ({ children }) => {
         
         // localStorage に保存
         localStorage.setItem('user', JSON.stringify(demoUser));
-        localStorage.setItem('token', 'demo_token_' + Date.now());
+        localStorage.setItem('access_token', 'demo_token_' + Date.now());
         
         setUser(demoUser);
         setIsAuthenticated(true);
@@ -93,7 +93,9 @@ export const AuthProvider = ({ children }) => {
         return { success: true, user: demoUser };
       }
 
-      // 本番環境での実際のAPI呼び出し
+      // 🔧 本番環境での実際のAPI呼び出し（修正版）
+      console.log('🔗 API呼び出し開始:', credentials);
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -102,23 +104,33 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify(credentials),
       });
 
+      console.log('📡 レスポンス状況:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error('ログインに失敗しました');
+        const errorData = await response.json().catch(() => ({ detail: 'ログインに失敗しました' }));
+        throw new Error(errorData.detail || 'ログインに失敗しました');
       }
 
       const data = await response.json();
+      console.log('📋 レスポンスデータ:', data);
       
-      // 認証情報を保存
-      localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('token', data.token);
-      
-      setUser(data.user);
-      setIsAuthenticated(true);
-      
-      return { success: true, user: data.user };
+      // 🔧 認証情報を正しく保存
+      if (data.access_token && data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        
+        setUser(data.user);
+        setIsAuthenticated(true);
+        
+        console.log('✅ ログイン成功:', data.user.username);
+        return { success: true, user: data.user };
+      } else {
+        throw new Error('レスポンスデータが不正です');
+      }
       
     } catch (error) {
-      console.error('ログインエラー:', error);
+      console.error('❌ ログインエラー:', error);
       return { 
         success: false, 
         error: error.message || 'ログインに失敗しました' 
@@ -130,25 +142,52 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      // localStorage をクリア
+      console.log('👋 ログアウト処理開始');
+      
+      // 🔧 修正: トークンを削除前に取得
+      const token = localStorage.getItem('access_token');
+      console.log('🎫 使用するトークン:', token ? `${token.substring(0, 20)}...` : 'なし');
+      
+      // 本番環境ではサーバーサイドのログアウトも実行
+      if (process.env.NODE_ENV === 'production' && token && token !== 'null') {
+        try {
+          console.log('📡 サーバーログアウト実行');
+          const response = await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+          });
+          
+          console.log('📋 ログアウトレスポンス:', response.status);
+          
+          if (!response.ok) {
+            console.warn('⚠️ サーバーログアウトが失敗しましたが、ローカルログアウトを続行');
+          }
+        } catch (fetchError) {
+          console.warn('⚠️ サーバーログアウトエラー:', fetchError.message);
+        }
+      }
+      
+      // 🔧 ローカルストレージをクリア（サーバー処理後）
       localStorage.removeItem('user');
-      localStorage.removeItem('token');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       
       setUser(null);
       setIsAuthenticated(false);
       
-      // 本番環境ではサーバーサイドのログアウトも実行
-      if (process.env.NODE_ENV === 'production') {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-      }
+      console.log('✅ ログアウト完了');
       
     } catch (error) {
-      console.error('ログアウトエラー:', error);
+      console.error('❌ ログアウトエラー:', error);
+      // エラーでもローカルの状態はクリア
+      localStorage.removeItem('user');
+      localStorage.removeItem('access_token');  
+      localStorage.removeItem('refresh_token');
+      setUser(null);
+      setIsAuthenticated(false);
     }
   };
 
