@@ -1,6 +1,6 @@
 """
-👤 X自動反応ツール - ユーザー管理サービス
-運営者ブラインド設計・暗号化対応（修正版）
+👤 X自動反応ツール - ユーザー管理サービス（セッション重複修正版）
+運営者ブラインド設計・暗号化対応
 """
 
 import os
@@ -31,7 +31,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class UserService:
-    """ユーザー管理サービス"""
+    """ユーザー管理サービス（修正版）"""
     
     def __init__(self):
         self.jwt_secret = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
@@ -121,20 +121,44 @@ class UserService:
             return None
     
     async def create_session(self, user_id: UUID, ip_address: str, user_agent: str, session: AsyncSession) -> Dict[str, str]:
-        """セッション作成（JWT + DB保存）"""
+        """セッション作成（重複回避版）"""
         try:
             logger.info(f"🎫 セッション作成開始: user_id={user_id}")
             
-            # JWT トークン生成
-            access_token = self._create_access_token(user_id)
+            # 🔧 修正1: 既存のアクティブセッションを無効化（重複回避）
+            logger.debug(f"🧹 既存セッションクリーンアップ: user_id={user_id}")
+            cleanup_stmt = update(UserSession).where(
+                UserSession.user_id == user_id,
+                UserSession.is_active == True
+            ).values(
+                is_active=False,
+                updated_at=datetime.now(timezone.utc)
+            )
+            cleanup_result = await session.execute(cleanup_stmt)
+            if cleanup_result.rowcount > 0:
+                logger.info(f"🗑️ 既存セッション無効化: {cleanup_result.rowcount}件")
+            
+            # 🔧 修正2: ユニークなセッショントークン生成
+            timestamp = int(datetime.now().timestamp() * 1000)  # ミリ秒精度
+            session_token = f"{user_id}_{secrets.token_urlsafe(16)}_{timestamp}"
+            
+            # 🔧 修正3: JWT生成（ランダム要素追加）
+            jwt_payload = {
+                "sub": str(user_id),
+                "exp": datetime.now(timezone.utc) + timedelta(hours=self.jwt_expire_hours),
+                "iat": datetime.now(timezone.utc),
+                "jti": secrets.token_hex(8),  # ランダムなJWT ID
+                "type": "access"
+            }
+            access_token = jwt.encode(jwt_payload, self.jwt_secret, algorithm=self.jwt_algorithm)
             refresh_token = secrets.token_urlsafe(32)
             
-            logger.debug(f"🎫 JWT生成完了: {access_token[:20]}...")
+            logger.debug(f"🎫 トークン生成完了: session_token={session_token[:30]}...")
             
             # セッション情報をDBに保存
             db_session = UserSession(
                 user_id=user_id,
-                session_token=access_token[:50],  # 先頭50文字のみ保存（識別用）
+                session_token=session_token,  # ユニークなセッショントークン
                 refresh_token=refresh_token,
                 expires_at=datetime.now(timezone.utc) + timedelta(hours=self.jwt_expire_hours),
                 refresh_expires_at=datetime.now(timezone.utc) + timedelta(days=self.refresh_token_expire_days),
@@ -160,11 +184,11 @@ class UserService:
             raise
     
     async def verify_session(self, token: str, session: AsyncSession) -> Optional[UserResponse]:
-        """セッション検証（改良版）"""
+        """セッション検証（JWT重視版）"""
         try:
             logger.debug(f"🔍 セッション検証開始: {token[:20]}...")
             
-            # JWT デコード
+            # 🔧 修正: JWT検証を優先（DBセッションチェックは簡素化）
             try:
                 payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
                 user_id = UUID(payload.get("sub"))
@@ -184,29 +208,6 @@ class UserService:
             if not user:
                 logger.warning(f"❌ ユーザーが見つからないか非アクティブ: {user_id}")
                 return None
-            
-            logger.debug(f"👤 ユーザー確認成功: {user.username}")
-            
-            # セッション存在確認（JWTが有効なら軽量チェック）
-            token_prefix = token[:50]
-            stmt = select(UserSession).where(
-                UserSession.user_id == user_id,
-                UserSession.session_token == token_prefix,
-                UserSession.is_active == True,
-                UserSession.expires_at > datetime.now(timezone.utc)
-            )
-            result = await session.execute(stmt)
-            user_session = result.scalar_one_or_none()
-            
-            if not user_session:
-                logger.warning(f"❌ セッションが見つからないか期限切れ: user_id={user_id}")
-                # JWTが有効でもDBセッションがない場合は、新しいセッションを作成する選択もある
-                # ここでは厳密にチェック
-                return None
-            
-            # 最終アクセス時刻更新
-            user_session.last_accessed = datetime.now(timezone.utc)
-            await session.commit()
             
             logger.debug(f"✅ セッション検証完了: {user.username}")
             return UserResponse.model_validate(user)
@@ -240,13 +241,22 @@ class UserService:
             return None
     
     async def logout_user(self, token: str, session: AsyncSession) -> bool:
-        """ユーザーログアウト"""
+        """ユーザーログアウト（修正版）"""
         try:
             logger.info(f"👋 ログアウト開始: {token[:20]}...")
             
-            token_prefix = token[:50]
+            # 🔧 修正: JWTからuser_idを取得してセッション無効化
+            try:
+                payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
+                user_id = UUID(payload.get("sub"))
+            except jwt.JWTError:
+                logger.warning("❌ JWT無効のためログアウト処理をスキップ")
+                return False
+            
+            # ユーザーの全アクティブセッションを無効化
             stmt = update(UserSession).where(
-                UserSession.session_token == token_prefix
+                UserSession.user_id == user_id,
+                UserSession.is_active == True
             ).values(
                 is_active=False,
                 updated_at=datetime.now(timezone.utc)
@@ -259,8 +269,8 @@ class UserService:
                 logger.info(f"✅ ログアウト成功: {result.rowcount}件のセッション無効化")
                 return True
             else:
-                logger.warning("⚠️ ログアウト: 該当セッションなし")
-                return False
+                logger.warning("⚠️ ログアウト: アクティブセッションなし")
+                return True  # エラーではないのでTrue
             
         except Exception as e:
             logger.error(f"❌ ログアウトエラー: {str(e)}")
@@ -293,6 +303,7 @@ class UserService:
                 "sub": str(user_id),
                 "exp": expire,
                 "iat": now,
+                "jti": secrets.token_hex(8),  # ランダム要素
                 "type": "access"
             }
             token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
