@@ -24,70 +24,84 @@ import {
   Pause,
   AlertCircle,
 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 const Dashboard = () => {
+  const { user, isAuthenticated } = useAuth();
   const [stats, setStats] = useState({
-    totalLikes: 1250,
-    totalRetweets: 340,
-    totalReplies: 89,
-    totalFollowers: 2100,
-    todayActions: 45,
-    queuedActions: 12,
-    successRate: 94.2,
-    activeTime: '2時間15分',
+    totalLikes: 0,
+    totalRetweets: 0,
+    totalReplies: 0,
+    totalFollowers: 0,
+    todayActions: 0,
+    queuedActions: 0,
+    successRate: 0,
+    activeTime: '0分',
+    loading: true,
   });
 
-  const [recentActivity, setRecentActivity] = useState([
-    {
-      id: 1,
-      type: 'like',
-      target: '@tech_enthusiast',
-      content: 'AIの最新トレンドについて',
-      timestamp: new Date(Date.now() - 300000),
-      status: 'success',
-    },
-    {
-      id: 2,
-      type: 'retweet',
-      target: '@innovation_hub',
-      content: '自動化ツールの革新',
-      timestamp: new Date(Date.now() - 600000),
-      status: 'success',
-    },
-    {
-      id: 3,
-      type: 'reply',
-      target: '@developer_community',
-      content: 'React開発のベストプラクティス',
-      timestamp: new Date(Date.now() - 900000),
-      status: 'success',
-    },
-  ]);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [chartData, setChartData] = useState([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState(null);
 
-  const [chartData] = useState([
-    { name: '月', likes: 120, retweets: 80, replies: 40 },
-    { name: '火', likes: 150, retweets: 120, replies: 60 },
-    { name: '水', likes: 180, retweets: 100, replies: 80 },
-    { name: '木', likes: 220, retweets: 150, replies: 70 },
-    { name: '金', likes: 200, retweets: 130, replies: 90 },
-    { name: '土', likes: 170, retweets: 110, replies: 50 },
-    { name: '日', likes: 140, retweets: 90, replies: 40 },
-  ]);
+  // 本番環境用のAPIデータ取得
+  const fetchDashboardData = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token || !isAuthenticated) {
+        setError('認証が必要です');
+        return;
+      }
 
-  const [isRunning, setIsRunning] = useState(true);
+      const response = await fetch('/api/dashboard/stats', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-  // リアルタイム更新（簡素化）
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      setStats({
+        totalLikes: data.total_likes || 0,
+        totalRetweets: data.total_retweets || 0,
+        totalReplies: data.total_replies || 0,
+        totalFollowers: data.total_followers || 0,
+        todayActions: data.today_actions || 0,
+        queuedActions: data.queued_actions || 0,
+        successRate: data.success_rate || 0,
+        activeTime: data.active_time || '0分',
+        loading: false,
+      });
+
+      setRecentActivity(data.recent_activity || []);
+      setChartData(data.chart_data || []);
+      setIsRunning(data.is_running || false);
+
+    } catch (error) {
+      console.error('ダッシュボードデータ取得エラー:', error);
+      setError('データの取得に失敗しました');
+      setStats(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // 初回読み込みと定期更新
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStats(prev => ({
-        ...prev,
-        todayActions: prev.todayActions + Math.floor(Math.random() * 2),
-        totalLikes: prev.totalLikes + Math.floor(Math.random() * 3),
-      }));
-    }, 10000); // 10秒ごとに更新
+    if (isAuthenticated) {
+      fetchDashboardData();
+      
+      const interval = setInterval(() => {
+        fetchDashboardData();
+      }, 30000); // 30秒ごとに更新
 
-    return () => clearInterval(interval);
-  }, []);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   const getActivityIcon = (type) => {
     switch (type) {

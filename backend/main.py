@@ -38,6 +38,7 @@ from backend.infrastructure.operator_blind_storage import (
 from backend.ai.groq_client import get_groq_client
 from backend.core.rate_limiter import rate_limiter_manager
 from backend.services.secure_request_handler import handle_secure_request
+from backend.api.dashboard_router import router as dashboard_router
 
 # ログ設定
 logging.basicConfig(
@@ -226,6 +227,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+# ダッシュボードAPI
+app.include_router(dashboard_router)
+
 )
 
 # 静的ファイル（フロントエンド）
