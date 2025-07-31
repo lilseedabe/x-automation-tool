@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 import jwt
+from jwt import InvalidTokenError  # 🔧 JWT例外を明示的にimport
 
 from ..database.models import (
     User, UserAPIKey, AutomationSettings, UserSession,
@@ -196,7 +197,7 @@ class UserService:
             except jwt.ExpiredSignatureError:
                 logger.warning("⏰ JWT期限切れ")
                 return None
-            except jwt.JWTError as e:
+            except InvalidTokenError as e:
                 logger.warning(f"❌ JWT無効: {str(e)}")
                 return None
             
@@ -236,21 +237,27 @@ class UserService:
             
             return None
             
-        except (jwt.ExpiredSignatureError, jwt.JWTError) as e:
+        except (jwt.ExpiredSignatureError, InvalidTokenError) as e:
             logger.warning(f"❌ 簡易セッション検証失敗: {str(e)}")
             return None
     
     async def logout_user(self, token: str, session: AsyncSession) -> bool:
         """ユーザーログアウト（修正版）"""
         try:
-            logger.info(f"👋 ログアウト開始: {token[:20]}...")
+            logger.info(f"👋 ログアウト開始: {token[:20] if token else 'None'}...")
+            
+            # 🔧 修正: トークンの存在確認
+            if not token or token == "null" or token == "undefined":
+                logger.warning("❌ 無効なトークンのためログアウト処理をスキップ")
+                return False
             
             # 🔧 修正: JWTからuser_idを取得してセッション無効化
             try:
                 payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
                 user_id = UUID(payload.get("sub"))
-            except jwt.JWTError:
-                logger.warning("❌ JWT無効のためログアウト処理をスキップ")
+                logger.debug(f"🎫 JWT解析成功: user_id={user_id}")
+            except InvalidTokenError as e:
+                logger.warning(f"❌ JWT無効のためログアウト処理をスキップ: {str(e)}")
                 return False
             
             # ユーザーの全アクティブセッションを無効化
