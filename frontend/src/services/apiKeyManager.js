@@ -1,169 +1,276 @@
 /**
- * 🔐 APIキー管理サービス（ローカルストレージ暗号化保存）
+ * 🔐 VPS PostgreSQL完全管理APIキーサービス
  * 
- * ユーザーのX APIキーをブラウザのローカルストレージのみに保存
- * サーバーには一切保存せず、セキュリティリスクを最小化
+ * すべてのAPIキーはVPS PostgreSQLで運営者ブラインド暗号化管理
+ * ローカルストレージは一切使用しない完全サーバーサイド管理
  * 
- * 注意: crypto-jsが利用できない場合は、基本的なBase64エンコーディングを使用
+ * セキュリティ仕様:
+ * - AES-256-GCM暗号化
+ * - PBKDF2キー導出 (100,000回反復)
+ * - 運営者ブラインド設計
+ * - セッションベースキャッシュ
  */
-
-// 暗号化ライブラリ（オプショナル）
-let CryptoJS = null;
-try {
-  // crypto-jsが利用可能な場合のみインポート
-  // インストール: npm install crypto-js
-  // CryptoJS = require('crypto-js');
-  console.warn('crypto-js not available, using basic encoding');
-} catch (error) {
-  console.warn('crypto-js not installed, using fallback encoding');
-}
-
-// フォールバック暗号化キー（実際のアプリでは、より安全な方法を使用）
-const ENCRYPTION_KEY = 'x-automation-tool-2024-secure-key';
 
 /**
- * APIキーマネージャークラス
+ * VPS PostgreSQL完全管理APIキーサービス
  */
-class APIKeyManager {
+class VPSAPIKeyManager {
   constructor() {
-    this.storageKey = 'x_automation_encrypted_keys';
+    this.baseURL = '/api/auth';
+    console.log('🔐 VPS PostgreSQL APIキーマネージャー初期化完了');
   }
 
   /**
-   * データを暗号化（フォールバック版）
-   * 
-   * @param {string} data - 暗号化するデータ
-   * @returns {string} 暗号化されたデータ
+   * サーバーにキャッシュされたAPIキー状態確認
    */
-  _encryptData(data) {
-    if (CryptoJS) {
-      // crypto-jsが利用可能な場合
-      return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
-    } else {
-      // フォールバック: Base64エンコーディング
-      return btoa(unescape(encodeURIComponent(data)));
-    }
-  }
-
-  /**
-   * データを復号化（フォールバック版）
-   * 
-   * @param {string} encryptedData - 暗号化されたデータ
-   * @returns {string} 復号化されたデータ
-   */
-  _decryptData(encryptedData) {
+  async checkCachedStatus() {
     try {
-      if (CryptoJS) {
-        // crypto-jsが利用可能な場合
-        const bytes = CryptoJS.AES.decrypt(encryptedData, ENCRYPTION_KEY);
-        return bytes.toString(CryptoJS.enc.Utf8);
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        return { has_cached_keys: false, message: 'ログインが必要です' };
+      }
+
+      const response = await fetch(`${this.baseURL}/api-keys/cached`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ VPS APIキー状態確認成功:', data);
+        return data;
       } else {
-        // フォールバック: Base64デコーディング
-        return decodeURIComponent(escape(atob(encryptedData)));
+        console.warn('⚠️ VPS APIキー状態確認失敗:', response.status);
+        return { has_cached_keys: false, message: 'サーバーエラー' };
       }
     } catch (error) {
-      throw new Error('復号化に失敗しました');
+      console.error('❌ VPS APIキー状態確認エラー:', error);
+      return { has_cached_keys: false, message: 'ネットワークエラー' };
     }
   }
 
   /**
-   * APIキーを暗号化してローカルストレージに保存
-   * 
-   * @param {Object} apiKeys - APIキーオブジェクト
-   * @param {string} apiKeys.api_key - API Key
-   * @param {string} apiKeys.api_secret - API Secret
-   * @param {string} apiKeys.access_token - Access Token
-   * @param {string} apiKeys.access_token_secret - Access Token Secret
-   * @returns {boolean} 保存成功フラグ
+   * APIキーをVPS PostgreSQLに暗号化保存
    */
-  saveAPIKeys(apiKeys) {
+  async saveAPIKeys(apiKeys, userPassword) {
     try {
-      // APIキーの検証
-      if (!this.validateAPIKeys(apiKeys)) {
-        throw new Error('無効なAPIキーです');
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('ログインが必要です');
       }
 
-      // 暗号化
-      const encrypted = this._encryptData(JSON.stringify(apiKeys));
+      const response = await fetch(`${this.baseURL}/api-keys`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          api_key: apiKeys.api_key,
+          api_secret: apiKeys.api_secret,
+          access_token: apiKeys.access_token,
+          access_token_secret: apiKeys.access_token_secret,
+          user_password: userPassword
+        }),
+      });
 
-      // ローカルストレージに保存
-      localStorage.setItem(this.storageKey, encrypted);
-      
-      console.log('✅ APIキーが安全に保存されました（ローカルストレージのみ）');
-      return true;
-
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ VPS APIキー保存成功:', data);
+        return { success: true, data };
+      } else {
+        const errorData = await response.json();
+        console.error('❌ VPS APIキー保存失敗:', errorData);
+        throw new Error(errorData.detail || 'サーバーエラー');
+      }
     } catch (error) {
-      console.error('❌ APIキー保存エラー:', error);
-      return false;
+      console.error('❌ VPS APIキー保存エラー:', error);
+      throw error;
     }
   }
 
   /**
-   * ローカルストレージからAPIキーを復号化して取得
-   * 
-   * @returns {Object|null} APIキーオブジェクトまたはnull
+   * VPSからAPIキー状態取得（復号なし）
    */
-  getAPIKeys() {
+  async getAPIKeyStatus() {
     try {
-      // ローカルストレージから暗号化データを取得
-      const encrypted = localStorage.getItem(this.storageKey);
-      
-      if (!encrypted) {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('ログインが必要です');
+      }
+
+      const response = await fetch(`${this.baseURL}/api-keys`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ VPS APIキー状態取得成功:', data);
+        return data;
+      } else if (response.status === 404) {
+        console.log('⚠️ APIキーが登録されていません');
         return null;
+      } else {
+        const errorData = await response.json();
+        console.error('❌ VPS APIキー状態取得失敗:', errorData);
+        throw new Error(errorData.detail || 'サーバーエラー');
       }
-
-      // 復号化
-      const decrypted = this._decryptData(encrypted);
-      
-      if (!decrypted) {
-        throw new Error('復号化に失敗しました');
-      }
-
-      const apiKeys = JSON.parse(decrypted);
-      
-      // 復号化後の検証
-      if (!this.validateAPIKeys(apiKeys)) {
-        throw new Error('復号化されたAPIキーが無効です');
-      }
-
-      return apiKeys;
-
     } catch (error) {
-      console.error('❌ APIキー取得エラー:', error);
-      return null;
+      console.error('❌ VPS APIキー状態取得エラー:', error);
+      throw error;
     }
   }
 
   /**
-   * APIキーを削除
-   * 
-   * @returns {boolean} 削除成功フラグ
+   * APIキーテスト（キャッシュ優先・VPS管理）
    */
-  clearAPIKeys() {
+  async testAPIKeys(userPassword) {
     try {
-      localStorage.removeItem(this.storageKey);
-      console.log('✅ APIキーが削除されました');
-      return true;
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('ログインが必要です');
+      }
+
+      const response = await fetch(`${this.baseURL}/api-keys/test`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_password: userPassword
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ VPS APIキーテスト成功:', data);
+        return data;
+      } else {
+        const errorData = await response.json();
+        console.error('❌ VPS APIキーテスト失敗:', errorData);
+        throw new Error(errorData.detail || 'テストに失敗しました');
+      }
     } catch (error) {
-      console.error('❌ APIキー削除エラー:', error);
+      console.error('❌ VPS APIキーテストエラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * VPS PostgreSQLからAPIキー削除
+   */
+  async deleteAPIKeys() {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('ログインが必要です');
+      }
+
+      const response = await fetch(`${this.baseURL}/api-keys`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ VPS APIキー削除成功:', data);
+        return { success: true, data };
+      } else {
+        const errorData = await response.json();
+        console.error('❌ VPS APIキー削除失敗:', errorData);
+        throw new Error(errorData.detail || '削除に失敗しました');
+      }
+    } catch (error) {
+      console.error('❌ VPS APIキー削除エラー:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * APIキーが設定済みかチェック
+   */
+  async hasAPIKeys() {
+    try {
+      const status = await this.getAPIKeyStatus();
+      return status !== null;
+    } catch (error) {
+      console.error('❌ APIキー存在確認エラー:', error);
       return false;
     }
   }
 
   /**
-   * APIキーが保存されているかチェック
-   * 
-   * @returns {boolean} 保存済みフラグ
+   * APIキー設定の完全な状態を取得
    */
-  hasAPIKeys() {
-    return localStorage.getItem(this.storageKey) !== null;
+  async getStatus() {
+    try {
+      const [keyStatus, cachedStatus] = await Promise.all([
+        this.getAPIKeyStatus(),
+        this.checkCachedStatus()
+      ]);
+
+      return {
+        configured: keyStatus !== null,
+        cached: cachedStatus.has_cached_keys,
+        valid: keyStatus?.is_valid || false,
+        storage_type: 'VPS_PostgreSQL',
+        server_stored: true,
+        security_level: 'maximum',
+        encryption_method: 'AES-256-GCM + PBKDF2',
+        operator_blind: true,
+        last_accessed: keyStatus?.last_used || null,
+        created_at: keyStatus?.created_at || null,
+        usage_count: keyStatus?.usage_count || 0
+      };
+    } catch (error) {
+      console.error('❌ APIキー状態取得エラー:', error);
+      return {
+        configured: false,
+        cached: false,
+        valid: false,
+        storage_type: 'VPS_PostgreSQL',
+        server_stored: true,
+        security_level: 'maximum',
+        encryption_method: 'AES-256-GCM + PBKDF2',
+        operator_blind: true,
+        error: error.message
+      };
+    }
   }
 
   /**
-   * APIキーの形式を検証
-   * 
-   * @param {Object} apiKeys - APIキーオブジェクト
-   * @returns {boolean} 有効フラグ
+   * セキュリティ情報を取得
+   */
+  getSecurityInfo() {
+    return {
+      encryption: 'AES-256-GCM',
+      key_derivation: 'PBKDF2 (100,000 iterations)',
+      storage_location: 'VPS PostgreSQL Database',
+      server_storage: true,
+      operator_blind: true,
+      third_party_access: false,
+      data_retention: 'Encrypted in PostgreSQL until user deletion',
+      security_level: 'Maximum',
+      privacy_protection: 'Operator Blind Design',
+      cost_efficiency: '月額1,000円での運用',
+      local_storage: false,
+      browser_dependency: false
+    };
+  }
+
+  /**
+   * APIキーの基本的な形式検証（サーバー送信前チェック）
    */
   validateAPIKeys(apiKeys) {
     if (!apiKeys || typeof apiKeys !== 'object') {
@@ -196,119 +303,40 @@ class APIKeyManager {
 
     return true;
   }
-
-  /**
-   * APIキーをサーバーリクエスト用にフォーマット
-   * 注意: サーバーには保存されず、リクエスト時のみ一時的に使用
-   * 
-   * @returns {Object|null} リクエスト用APIキーオブジェクト
-   */
-  getKeysForRequest() {
-    const keys = this.getAPIKeys();
-    
-    if (!keys) {
-      return null;
-    }
-
-    return {
-      api_key: keys.api_key,
-      api_secret: keys.api_secret,
-      access_token: keys.access_token,
-      access_token_secret: keys.access_token_secret,
-      // リクエスト時刻を追加（セキュリティログ用）
-      request_timestamp: Date.now()
-    };
-  }
-
-  /**
-   * APIキーの設定状況を取得
-   * 
-   * @returns {Object} 設定状況
-   */
-  getStatus() {
-    const hasKeys = this.hasAPIKeys();
-    const keys = hasKeys ? this.getAPIKeys() : null;
-    const isValid = keys ? this.validateAPIKeys(keys) : false;
-
-    return {
-      configured: hasKeys,
-      valid: isValid,
-      storage_type: 'localStorage_encrypted',
-      server_stored: false, // サーバーには保存されていない
-      security_level: CryptoJS ? 'high' : 'medium', // crypto-jsの有無で判定
-      encryption_method: CryptoJS ? 'AES-256' : 'Base64',
-      last_accessed: hasKeys ? new Date().toISOString() : null
-    };
-  }
-
-  /**
-   * セキュリティ情報を取得
-   * 
-   * @returns {Object} セキュリティ情報
-   */
-  getSecurityInfo() {
-    return {
-      encryption: CryptoJS ? 'AES-256' : 'Base64 (Fallback)',
-      storage_location: 'Browser LocalStorage Only',
-      server_storage: false,
-      third_party_access: false,
-      data_retention: 'Until user clears browser data',
-      security_level: CryptoJS ? 'High' : 'Medium',
-      privacy_protection: 'Maximum',
-      crypto_js_available: !!CryptoJS
-    };
-  }
-
-  /**
-   * 暗号化レベルを向上させる（crypto-jsインストール後）
-   */
-  upgradeSecurity() {
-    if (!CryptoJS) {
-      console.warn('crypto-jsがインストールされていないため、セキュリティアップグレードできません');
-      console.info('インストール方法: npm install crypto-js');
-      return false;
-    }
-
-    const keys = this.getAPIKeys();
-    if (keys) {
-      // 既存のキーを新しい暗号化方式で再保存
-      this.saveAPIKeys(keys);
-      console.log('✅ セキュリティレベルをアップグレードしました');
-      return true;
-    }
-
-    return false;
-  }
 }
 
-// シングルトンインスタンス
-const apiKeyManager = new APIKeyManager();
+// メインのVPS PostgreSQL管理マネージャー
+const vpsAPIKeyManager = new VPSAPIKeyManager();
 
-export default apiKeyManager;
+// 下位互換性のためのエイリアス
+const serverAPIKeyManager = vpsAPIKeyManager;
+const apiKeyManager = vpsAPIKeyManager;
+
+export default vpsAPIKeyManager;
+export { vpsAPIKeyManager, serverAPIKeyManager, apiKeyManager };
 
 /**
- * 使用例:
+ * VPS PostgreSQL完全管理の使用例:
  * 
- * // APIキーの保存
- * const success = apiKeyManager.saveAPIKeys({
+ * import { vpsAPIKeyManager } from './services/apiKeyManager';
+ * 
+ * // APIキーの保存（VPS PostgreSQL）
+ * const success = await vpsAPIKeyManager.saveAPIKeys({
  *   api_key: 'your_api_key',
  *   api_secret: 'your_api_secret',
  *   access_token: 'your_access_token',
  *   access_token_secret: 'your_access_token_secret'
- * });
+ * }, 'user_password');
  * 
- * // APIキーの取得
- * const keys = apiKeyManager.getAPIKeys();
+ * // APIキー状態確認
+ * const status = await vpsAPIKeyManager.getStatus();
  * 
- * // リクエスト用フォーマット
- * const requestKeys = apiKeyManager.getKeysForRequest();
+ * // キャッシュ状態確認
+ * const cached = await vpsAPIKeyManager.checkCachedStatus();
  * 
- * // 設定状況確認
- * const status = apiKeyManager.getStatus();
+ * // APIキーテスト
+ * const testResult = await vpsAPIKeyManager.testAPIKeys('user_password');
  * 
  * // セキュリティ情報確認
- * const security = apiKeyManager.getSecurityInfo();
- * 
- * // セキュリティアップグレード（crypto-js導入後）
- * const upgraded = apiKeyManager.upgradeSecurity();
+ * const security = vpsAPIKeyManager.getSecurityInfo();
  */

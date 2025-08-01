@@ -320,6 +320,10 @@ class UserSession(Base):
     session_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     refresh_token: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
     
+    # APIキー復号状態（運営者ブラインド維持）
+    api_keys_cached: Mapped[bool] = mapped_column(Boolean, default=False)
+    api_cache_expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    
     # 有効期限
     expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     refresh_expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))

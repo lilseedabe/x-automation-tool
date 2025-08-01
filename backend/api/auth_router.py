@@ -232,6 +232,19 @@ async def login_user(
             user.id, client_ip, user_agent, session
         )
         
+        # APIキーの自動キャッシュ（パスワードがある場合）
+        try:
+            api_keys = await api_key_service.get_decrypted_api_keys(
+                user.id, login_data.password, session, session_data["access_token"]
+            )
+            if api_keys:
+                logger.info(f"🔐 ログイン時APIキーキャッシュ成功: {user.username}")
+            else:
+                logger.debug(f"⚠️ APIキーなしまたはキャッシュ失敗: {user.username}")
+        except Exception as e:
+            logger.warning(f"⚠️ ログイン時APIキーキャッシュエラー: {str(e)}")
+            # エラーがあってもログインは継続
+        
         logger.info(f"✅ ログイン完了: {user.username}")
         
         return LoginResponse(
@@ -516,27 +529,74 @@ async def get_api_key_status(
             detail=f"APIキー状態取得エラー: {str(e)}"
         )
 
-@router.post("/api-keys/test", response_model=ApiKeyValidationResponse, summary="APIキーテスト")
-async def test_api_keys(
-    test_data: APIKeyTestRequest,
+@router.get("/api-keys/cached", summary="キャッシュされたAPIキー状態確認")
+async def get_cached_api_key_status(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: UserResponse = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_db_session)
 ):
-    """APIキー接続テスト"""
+    """セッションにキャッシュされたAPIキーの状態確認（パスワード不要）"""
+    try:
+        logger.info(f"🔐 キャッシュAPIキー状態確認: user_id={current_user.id}")
+        
+        # セッショントークンからAPIキーを取得
+        cached_keys = await api_key_service.get_cached_api_keys_by_token(
+            current_user.id, credentials.credentials
+        )
+        
+        if cached_keys:
+            logger.info(f"✅ キャッシュAPIキー発見: user_id={current_user.id}")
+            return {
+                "has_cached_keys": True,
+                "keys_available": list(cached_keys.keys()),
+                "message": "APIキーはセッションにキャッシュされています"
+            }
+        else:
+            logger.info(f"❌ キャッシュAPIキーなし: user_id={current_user.id}")
+            return {
+                "has_cached_keys": False,
+                "keys_available": [],
+                "message": "APIキーがキャッシュされていません。パスワードが必要です。"
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ キャッシュAPIキー状態確認エラー: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"APIキー状態確認エラー: {str(e)}"
+        )
+
+@router.post("/api-keys/test", response_model=ApiKeyValidationResponse, summary="APIキーテスト")
+async def test_api_keys(
+    test_data: APIKeyTestRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: UserResponse = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_db_session)
+):
+    """APIキー接続テスト（キャッシュ優先）"""
     try:
         logger.info(f"🧪 APIキーテスト開始: user_id={current_user.id}")
         
-        # APIキー復号
-        api_keys = await api_key_service.get_decrypted_api_keys(
-            current_user.id, test_data.user_password, session
+        # まずキャッシュから取得を試行
+        api_keys = await api_key_service.get_cached_api_keys_by_token(
+            current_user.id, credentials.credentials
         )
         
+        # キャッシュにない場合は復号
         if not api_keys:
-            logger.warning(f"❌ APIキーテスト復号失敗: user_id={current_user.id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="APIキーの復号に失敗しました。パスワードを確認してください。"
+            logger.info(f"🔓 キャッシュなし、パスワードで復号: user_id={current_user.id}")
+            api_keys = await api_key_service.get_decrypted_api_keys(
+                current_user.id, test_data.user_password, session, credentials.credentials
             )
+            
+            if not api_keys:
+                logger.warning(f"❌ APIキーテスト復号失敗: user_id={current_user.id}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="APIキーの復号に失敗しました。パスワードを確認してください。"
+                )
+        else:
+            logger.info(f"✅ キャッシュからAPIキー取得: user_id={current_user.id}")
         
         # X API接続テスト（tweepy使用）
         try:

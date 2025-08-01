@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LogIn, UserPlus, Eye, EyeOff, Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { vpsAPIKeyManager } from '../services/apiKeyManager';
 import toast from 'react-hot-toast';
 
 const Login = () => {
@@ -85,6 +86,42 @@ const Login = () => {
             duration: 2000,
             icon: '🎉'
           });
+          
+          // ログイン成功後、VPS PostgreSQLのAPIキー状態を確認
+          try {
+            const [keyStatus, cachedStatus] = await Promise.all([
+              vpsAPIKeyManager.getAPIKeyStatus(),
+              vpsAPIKeyManager.checkCachedStatus()
+            ]);
+            
+            if (keyStatus && cachedStatus.has_cached_keys) {
+              console.log('✅ VPS APIキー設定済み & キャッシュ済み:', { keyStatus, cachedStatus });
+              toast.success('APIキーが利用可能です（VPS管理）', {
+                duration: 3000,
+                icon: '🔐'
+              });
+            } else if (keyStatus && !cachedStatus.has_cached_keys) {
+              console.log('⚠️ VPS APIキー設定済みだがキャッシュなし:', { keyStatus, cachedStatus });
+              toast('APIキーの復号が必要です（パスワード入力）', {
+                duration: 4000,
+                icon: '🔓'
+              });
+            } else {
+              console.log('⚠️ VPS APIキー未設定:', { keyStatus, cachedStatus });
+              toast('APIキーをVPSに保存してください', {
+                duration: 4000,
+                icon: '⚙️'
+              });
+            }
+          } catch (error) {
+            console.warn('VPS APIキー状態確認エラー:', error);
+            // エラーが発生してもログインは継続
+            toast('APIキー状態確認でエラーが発生しました', {
+              duration: 3000,
+              icon: '⚠️'
+            });
+          }
+          
           // useAuthフックによってisAuthenticatedが更新され、
           // App.jsxのProtectedRouteで自動的にダッシュボードにリダイレクトされます
         } else {

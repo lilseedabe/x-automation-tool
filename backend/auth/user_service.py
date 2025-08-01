@@ -325,7 +325,49 @@ class APIKeyService:
     
     def __init__(self):
         self.encryption_algorithm = "AES-256-GCM"
+        # セッションベースAPIキーキャッシュ（メモリ内）
+        self._api_key_cache: Dict[str, Dict[str, str]] = {}
+        self._cache_expires: Dict[str, datetime] = {}
         logger.info("🔐 APIKeyService初期化完了")
+    
+    def _generate_cache_key(self, user_id: UUID, session_token: str) -> str:
+        """キャッシュキー生成"""
+        return f"{user_id}_{hash(session_token)}"
+    
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """キャッシュ有効性確認"""
+        if cache_key not in self._cache_expires:
+            return False
+        return datetime.now(timezone.utc) < self._cache_expires[cache_key]
+    
+    def _cache_api_keys(self, cache_key: str, api_keys: Dict[str, str], expires_at: datetime):
+        """APIキーをキャッシュに保存"""
+        self._api_key_cache[cache_key] = api_keys.copy()
+        self._cache_expires[cache_key] = expires_at
+        logger.debug(f"🔐 APIキーキャッシュ保存: key={cache_key[:20]}...")
+    
+    def _get_cached_api_keys(self, cache_key: str) -> Optional[Dict[str, str]]:
+        """キャッシュからAPIキー取得"""
+        if self._is_cache_valid(cache_key):
+            logger.debug(f"🔐 APIキーキャッシュヒット: key={cache_key[:20]}...")
+            return self._api_key_cache.get(cache_key)
+        else:
+            # 期限切れキャッシュを削除
+            if cache_key in self._api_key_cache:
+                del self._api_key_cache[cache_key]
+            if cache_key in self._cache_expires:
+                del self._cache_expires[cache_key]
+            return None
+    
+    def _clear_user_cache(self, user_id: UUID):
+        """ユーザーのキャッシュをクリア"""
+        keys_to_remove = [key for key in self._api_key_cache.keys() if key.startswith(str(user_id))]
+        for key in keys_to_remove:
+            if key in self._api_key_cache:
+                del self._api_key_cache[key]
+            if key in self._cache_expires:
+                del self._cache_expires[key]
+        logger.debug(f"🧹 ユーザーキャッシュクリア: user_id={user_id}, {len(keys_to_remove)}件削除")
     
     async def store_api_keys(self, user_id: UUID, api_data: APIKeyCreate, session: AsyncSession) -> APIKeyResponse:
         """APIキー暗号化保存（運営者ブラインド）"""
@@ -368,10 +410,18 @@ class APIKeyService:
             logger.error(f"❌ APIキー保存エラー (user_id={user_id}): {str(e)}")
             raise
     
-    async def get_decrypted_api_keys(self, user_id: UUID, user_password: str, session: AsyncSession) -> Optional[Dict[str, str]]:
-        """APIキー復号（ユーザーパスワード必要）"""
+    async def get_decrypted_api_keys(self, user_id: UUID, user_password: str, session: AsyncSession, session_token: Optional[str] = None) -> Optional[Dict[str, str]]:
+        """APIキー復号（ユーザーパスワード必要・キャッシュ対応）"""
         try:
             logger.info(f"🔓 APIキー復号開始: user_id={user_id}")
+            
+            # キャッシュチェック（セッショントークンがある場合）
+            if session_token:
+                cache_key = self._generate_cache_key(user_id, session_token)
+                cached_keys = self._get_cached_api_keys(cache_key)
+                if cached_keys:
+                    logger.info(f"✅ APIキーキャッシュから取得: user_id={user_id}")
+                    return cached_keys
             
             # APIキー取得
             stmt = select(UserAPIKey).where(
@@ -402,21 +452,46 @@ class APIKeyService:
                 logger.error(f"❌ APIキー復号エラー: {str(e)}")
                 return None
             
-            # 最終使用時刻更新
-            api_key_record.last_used = datetime.now(timezone.utc)
-            api_key_record.usage_count += 1
-            await session.commit()
-            
-            logger.info(f"✅ APIキー復号完了: user_id={user_id}")
-            return {
+            # 復号結果
+            decrypted_keys = {
                 "api_key": api_key,
                 "api_secret": api_secret,
                 "access_token": access_token,
                 "access_token_secret": access_token_secret
             }
             
+            # キャッシュに保存（セッショントークンがある場合）
+            if session_token:
+                cache_key = self._generate_cache_key(user_id, session_token)
+                # キャッシュ有効期限は6時間
+                cache_expires = datetime.now(timezone.utc) + timedelta(hours=6)
+                self._cache_api_keys(cache_key, decrypted_keys, cache_expires)
+            
+            # 最終使用時刻更新
+            api_key_record.last_used = datetime.now(timezone.utc)
+            api_key_record.usage_count += 1
+            await session.commit()
+            
+            logger.info(f"✅ APIキー復号完了: user_id={user_id}")
+            return decrypted_keys
+            
         except Exception as e:
             logger.error(f"❌ APIキー復号エラー (user_id={user_id}): {str(e)}")
+            return None
+    
+    async def get_cached_api_keys_by_token(self, user_id: UUID, session_token: str) -> Optional[Dict[str, str]]:
+        """セッショントークンからキャッシュされたAPIキー取得"""
+        try:
+            cache_key = self._generate_cache_key(user_id, session_token)
+            cached_keys = self._get_cached_api_keys(cache_key)
+            if cached_keys:
+                logger.info(f"✅ セッションAPIキーキャッシュヒット: user_id={user_id}")
+                return cached_keys
+            else:
+                logger.debug(f"⚠️ セッションAPIキーキャッシュミス: user_id={user_id}")
+                return None
+        except Exception as e:
+            logger.error(f"❌ セッションAPIキー取得エラー: {str(e)}")
             return None
     
     async def get_api_key_status(self, user_id: UUID, session: AsyncSession) -> Optional[APIKeyResponse]:
