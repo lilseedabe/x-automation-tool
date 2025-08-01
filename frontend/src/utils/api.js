@@ -218,7 +218,11 @@ class APIClient {
 // シングルトンインスタンスを作成
 const apiClient = new APIClient();
 
+// 🔧 修正: デフォルトエクスポート
 export default apiClient;
+
+// 🔧 修正: named export として 'api' を追加（エラー解決）
+export const api = apiClient;
 
 // 個別のAPI関数もエクスポート（後方互換性）
 export const {
