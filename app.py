@@ -23,6 +23,7 @@ from backend.database.connection import init_database, close_database, check_dat
 from backend.api.auth_router import router as auth_router
 from backend.api.dashboard_router import router as dashboard_router
 from backend.api.automation_router import router as automation_router
+from backend.api.rate_limits_router import router as rate_limits_router  # 🔧 追加
 
 # ライフサイクル管理
 @asynccontextmanager
@@ -84,6 +85,7 @@ if frontend_build_path.exists():
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(automation_router)
+app.include_router(rate_limits_router)  # 🔧 追加
 
 # Pydantic 2.8+ モデル定義（Python 3.13完全対応）
 class HealthResponse(BaseModel):
