@@ -640,7 +640,6 @@ class AutomationService:
             await session.rollback()
             logger.error(f"❌ 自動化切り替えエラー (user_id={user_id}): {str(e)}")
             return False
-
 # シングルトンインスタンス
 user_service = UserService()
 api_key_service = APIKeyService()
