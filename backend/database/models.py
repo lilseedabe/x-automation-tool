@@ -11,7 +11,7 @@ import enum
 from sqlalchemy import (
     Column, String, Integer, Boolean, Text, TIMESTAMP, 
     ForeignKey, Index, CheckConstraint, UniqueConstraint,
-    LargeBinary, ARRAY, JSON, Time
+    LargeBinary, ARRAY, JSON, Time, DECIMAL
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB, INET
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -59,6 +59,8 @@ class User(Base):
     action_queue: Mapped[List["ActionQueue"]] = relationship("ActionQueue", back_populates="user")
     blacklist: Mapped[List["UserBlacklist"]] = relationship("UserBlacklist", back_populates="user")
     activity_logs: Mapped[List["ActivityLog"]] = relationship("ActivityLog", back_populates="user")
+    rate_limits: Mapped[List["RateLimit"]] = relationship("RateLimit", back_populates="user")  # 追加
+    automation_actions: Mapped[List["AutomationAction"]] = relationship("AutomationAction", back_populates="user")  # 追加
     
     # 制約
     __table_args__ = (
@@ -337,12 +339,119 @@ class AutomationAction(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     
+    # リレーション（追加）
+    user: Mapped["User"] = relationship("User", back_populates="automation_actions")
+    
     # 制約
     __table_args__ = (
         Index("idx_automation_actions_user_id", "user_id"),
         Index("idx_automation_actions_status", "status"),
         Index("idx_automation_actions_created_at", "created_at"),
         Index("idx_automation_actions_action_type", "action_type"),
+    )
+
+# ===================================================================
+# 🚦 RateLimit Model (新規追加)
+# ===================================================================
+
+class RateLimit(Base):
+    """レート制限管理テーブル"""
+    __tablename__ = "rate_limits"
+    
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    # エンドポイント情報
+    endpoint: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # レート制限設定
+    requests_made: Mapped[int] = mapped_column(Integer, default=0)
+    requests_limit: Mapped[int] = mapped_column(Integer, default=100)
+    
+    # ウィンドウ管理
+    window_start: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    window_duration: Mapped[int] = mapped_column(Integer, default=3600)  # 秒単位（デフォルト1時間）
+    reset_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    
+    # タイムスタンプ
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # リレーション
+    user: Mapped["User"] = relationship("User", back_populates="rate_limits")
+    
+    # 制約
+    __table_args__ = (
+        UniqueConstraint("user_id", "endpoint", name="unique_user_endpoint_rate_limit"),
+        Index("idx_rate_limits_user_id", "user_id"),
+        Index("idx_rate_limits_endpoint", "endpoint"),
+        Index("idx_rate_limits_reset_at", "reset_at"),
+        Index("idx_rate_limits_user_endpoint", "user_id", "endpoint"),
+    )
+
+# ===================================================================
+# 📊 Analytics Models (新規追加)
+# ===================================================================
+
+class AutomationAnalytics(Base):
+    """自動化分析データテーブル"""
+    __tablename__ = "automation_analytics"
+    
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    # 分析期間
+    date: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    
+    # アクション統計
+    total_actions: Mapped[int] = mapped_column(Integer, default=0)
+    successful_actions: Mapped[int] = mapped_column(Integer, default=0)
+    failed_actions: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # アクション別統計
+    likes_given: Mapped[int] = mapped_column(Integer, default=0)
+    retweets_made: Mapped[int] = mapped_column(Integer, default=0)
+    replies_sent: Mapped[int] = mapped_column(Integer, default=0)
+    follows_made: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # パフォーマンス指標
+    engagement_rate: Mapped[Optional[float]] = mapped_column(DECIMAL(5,2), default=0.00)
+    success_rate: Mapped[Optional[float]] = mapped_column(DECIMAL(5,2), default=0.00)
+    average_response_time_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    
+    # タイムスタンプ
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # 制約
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="unique_user_date_analytics"),
+        Index("idx_automation_analytics_user_id", "user_id"),
+        Index("idx_automation_analytics_date", "date"),
+        Index("idx_automation_analytics_user_date", "user_id", "date"),
+    )
+
+class SystemSettings(Base):
+    """システム設定テーブル"""
+    __tablename__ = "system_settings"
+    
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # メタデータ
+    value_type: Mapped[str] = mapped_column(String(20), default='string')  # string, int, float, bool, json
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    # タイムスタンプ
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # 制約
+    __table_args__ = (
+        Index("idx_system_settings_key", "key"),
+        Index("idx_system_settings_is_public", "is_public"),
     )
 
 class UserSession(Base):
@@ -373,7 +482,7 @@ class UserSession(Base):
     
     # タイムスタンプ
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())  # 🔧 追加
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
     last_accessed: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
     
     # リレーション
@@ -384,6 +493,7 @@ class UserSession(Base):
         Index("idx_user_sessions_user_id", "user_id"),
         Index("idx_user_sessions_session_token", "session_token"),
         Index("idx_user_sessions_expires_at", "expires_at"),
+        Index("idx_user_sessions_api_cache_expires", "api_cache_expires_at"),
     )
 
 # ===================================================================
@@ -513,3 +623,55 @@ class UserStatsResponse(BaseModel):
     total_reposts: int = 0
     success_rate_percent: float = 0.0
     last_action: Optional[datetime] = None
+
+# ===================================================================
+# 🚦 Rate Limit Pydantic Models (新規追加)
+# ===================================================================
+
+class RateLimitInfo(BaseModel):
+    """レート制限情報"""
+    model_config = ConfigDict(from_attributes=True)
+    
+    endpoint: str = Field(..., description="APIエンドポイント")
+    requests_made: int = Field(..., description="使用済みリクエスト数")
+    requests_limit: int = Field(..., description="制限数")
+    remaining: int = Field(..., description="残りリクエスト数")
+    reset_at: Optional[datetime] = Field(None, description="リセット時刻")
+    window_duration: int = Field(..., description="ウィンドウ期間（秒）")
+    percentage_used: float = Field(..., description="使用率（%）")
+
+class RateLimitSummary(BaseModel):
+    """レート制限サマリー"""
+    user_id: str = Field(..., description="ユーザーID")
+    total_endpoints: int = Field(..., description="監視対象エンドポイント数")
+    limits: List[RateLimitInfo] = Field(..., description="レート制限詳細")
+    overall_status: str = Field(..., description="全体ステータス")
+    next_reset: Optional[datetime] = Field(None, description="次のリセット時刻")
+
+class RateLimitUpdateRequest(BaseModel):
+    """レート制限更新リクエスト"""
+    endpoint: str = Field(..., description="APIエンドポイント")
+    requests_limit: int = Field(..., ge=1, description="新しい制限数")
+
+# ===================================================================
+# 📊 Analytics Pydantic Models (新規追加)
+# ===================================================================
+
+class AutomationAnalyticsResponse(BaseModel):
+    """自動化分析レスポンス"""
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: UUID
+    user_id: UUID
+    date: datetime
+    total_actions: int
+    successful_actions: int
+    failed_actions: int
+    likes_given: int
+    retweets_made: int
+    replies_sent: int
+    follows_made: int
+    engagement_rate: Optional[float] = None
+    success_rate: Optional[float] = None
+    created_at: datetime
+    updated_at: datetime
