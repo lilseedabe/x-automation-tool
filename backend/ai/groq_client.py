@@ -342,6 +342,145 @@ class GroqClient:
                 "suggestions": []
             }
     
+    async def analyze_post_content(self, content: str, analysis_type: str = "engagement_prediction", user_id: str = None) -> Dict[str, Any]:
+        """
+        投稿内容の包括的分析
+        
+        Args:
+            content (str): 投稿内容
+            analysis_type (str): 分析タイプ
+            user_id (str): ユーザーID（ログ用）
+            
+        Returns:
+            Dict[str, Any]: 包括的分析結果
+        """
+        if not self.is_available():
+            logger.warning(f"Groq AI利用不可 - フォールバック分析を返します (user: {user_id})")
+            return self._generate_fallback_analysis(content)
+        
+        try:
+            prompt = f"""
+以下の投稿内容を包括的に分析し、エンゲージメント予測を行ってください：
+
+投稿内容: "{content}"
+
+以下の形式でJSON回答してください：
+{{
+  "overall_score": 0-100の総合スコア,
+  "engagement_prediction": {{
+    "likes": 予想いいね数,
+    "retweets": 予想リツイート数,
+    "replies": 予想返信数
+  }},
+  "sentiment": {{
+    "positive": 0.0-1.0のポジティブ度,
+    "neutral": 0.0-1.0のニュートラル度,
+    "negative": 0.0-1.0のネガティブ度
+  }},
+  "keywords": ["抽出されたキーワード"],
+  "recommendations": ["最適化の推奨事項"],
+  "risk_assessment": "low/medium/high"
+}}
+
+分析は日本語のソーシャルメディア投稿として行い、現実的な数値を予測してください。
+"""
+            
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.default_model,
+                messages=[
+                    {"role": "system", "content": "あなたは日本語ソーシャルメディア投稿の分析専門家です。現実的で実用的な分析を提供してください。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1200,
+                temperature=0.3
+            )
+            
+            content_response = response.choices[0].message.content
+            
+            try:
+                result = json.loads(content_response)
+                logger.info(f"AI投稿分析完了 (user: {user_id})")
+                return result
+            except json.JSONDecodeError:
+                logger.warning(f"AI分析JSON解析失敗 - フォールバック分析を返します (user: {user_id})")
+                return self._generate_fallback_analysis(content)
+                
+        except Exception as e:
+            logger.error(f"AI投稿分析エラー (user: {user_id}): {e}")
+            return self._generate_fallback_analysis(content)
+    
+    def _generate_fallback_analysis(self, content: str) -> Dict[str, Any]:
+        """フォールバック分析生成"""
+        content_length = len(content) if content else 0
+        
+        # 基本スコア計算
+        base_score = 50
+        if content_length > 100:
+            base_score += 20
+        if '#' in content:
+            base_score += 10
+        if content_length < 280:
+            base_score += 10
+        if '?' in content or '！' in content:
+            base_score += 5
+        
+        # エンゲージメント予測
+        likes_base = max(20, content_length * 1.5)
+        retweets_base = max(10, content_length * 0.8)
+        replies_base = max(5, content_length * 0.4)
+        
+        return {
+            "overall_score": min(base_score, 95),
+            "engagement_prediction": {
+                "likes": int(likes_base),
+                "retweets": int(retweets_base),
+                "replies": int(replies_base)
+            },
+            "sentiment": {
+                "positive": 0.6,
+                "neutral": 0.3,
+                "negative": 0.1
+            },
+            "keywords": self._extract_basic_keywords_fallback(content),
+            "recommendations": self._generate_basic_recommendations_fallback(content),
+            "risk_assessment": "low",
+            "note": "AI分析が利用できないため、基本的な分析を表示しています"
+        }
+    
+    def _extract_basic_keywords_fallback(self, content: str) -> List[str]:
+        """フォールバック用キーワード抽出"""
+        if not content:
+            return ["投稿"]
+        
+        common_words = ["AI", "自動化", "テクノロジー", "効率化", "ビジネス", "マーケティング", "SNS", "Twitter"]
+        found_words = [word for word in common_words if word.lower() in content.lower()]
+        
+        return found_words if found_words else ["一般"]
+    
+    def _generate_basic_recommendations_fallback(self, content: str) -> List[str]:
+        """フォールバック用推奨事項生成"""
+        recommendations = []
+        
+        if not content:
+            return ["投稿内容を入力してください"]
+        
+        if len(content) < 50:
+            recommendations.append("投稿をもう少し詳しく書くとエンゲージメントが向上します")
+        
+        if '#' not in content:
+            recommendations.append("関連するハッシュタグを追加することをお勧めします")
+        
+        if len(content) > 280:
+            recommendations.append("投稿が長すぎる可能性があります。簡潔にまとめることを検討してください")
+        
+        if '?' not in content and '！' not in content:
+            recommendations.append("疑問符や感嘆符を使って感情を表現すると良いでしょう")
+        
+        recommendations.append("投稿時間を19-21時に設定すると良いでしょう")
+        
+        return recommendations
+    
     async def get_service_status(self) -> Dict[str, Any]:
         """
         サービス状態取得

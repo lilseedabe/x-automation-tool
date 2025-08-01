@@ -77,6 +77,101 @@ const ReportsPage = () => {
   );
 };
 
+// Help Page
+const HelpPage = () => {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">
+          ❓ ヘルプ・サポート
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* よくある質問 */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">よくある質問</h3>
+            
+            <div className="space-y-3">
+              <details className="bg-gray-50 rounded-lg p-4">
+                <summary className="font-medium text-gray-900 cursor-pointer">
+                  自動化機能はどのように動作しますか？
+                </summary>
+                <p className="mt-2 text-sm text-gray-600">
+                  X APIを使用して、設定されたキーワードや条件に基づいて自動的にいいねやリツイートを実行します。
+                  レート制限を遵守し、安全に動作します。
+                </p>
+              </details>
+              
+              <details className="bg-gray-50 rounded-lg p-4">
+                <summary className="font-medium text-gray-900 cursor-pointer">
+                  APIキーはどのように保護されますか？
+                </summary>
+                <p className="mt-2 text-sm text-gray-600">
+                  すべてのAPIキーは運営者ブラインド設計により暗号化保存され、
+                  運営者でも閲覧することはできません。
+                </p>
+              </details>
+              
+              <details className="bg-gray-50 rounded-lg p-4">
+                <summary className="font-medium text-gray-900 cursor-pointer">
+                  AI分析はどの程度正確ですか？
+                </summary>
+                <p className="mt-2 text-sm text-gray-600">
+                  Groq AIを使用した高精度な分析を提供していますが、
+                  あくまで参考として活用してください。
+                </p>
+              </details>
+            </div>
+          </div>
+          
+          {/* 使い方ガイド */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">使い方ガイド</h3>
+            
+            <div className="space-y-3">
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">1. 初期設定</h4>
+                <p className="text-sm text-blue-800">
+                  設定ページでX APIキーを登録し、自動化の条件を設定します。
+                </p>
+              </div>
+              
+              <div className="bg-green-50 rounded-lg p-4">
+                <h4 className="font-medium text-green-900 mb-2">2. 自動化開始</h4>
+                <p className="text-sm text-green-800">
+                  自動化パネルで機能を有効にし、対象キーワードを設定します。
+                </p>
+              </div>
+              
+              <div className="bg-purple-50 rounded-lg p-4">
+                <h4 className="font-medium text-purple-900 mb-2">3. 分析・最適化</h4>
+                <p className="text-sm text-purple-800">
+                  AI分析結果を確認し、設定を最適化してパフォーマンスを向上させます。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* 連絡先情報 */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">サポート</h3>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">
+              その他のご質問やサポートが必要な場合：
+            </p>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• システム稼働状況：<code>/health</code> エンドポイントで確認</li>
+              <li>• API文書：<code>/api/docs</code> で詳細確認</li>
+              <li>• プライバシー保護：運営者ブラインド設計により完全保護</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App Routes
 const AppRoutes = () => {
   return (
@@ -178,6 +273,17 @@ const AppRoutes = () => {
             </Layout>
           </ProtectedRoute>
         } 
+      />
+      
+      <Route
+        path="/help"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <HelpPage />
+            </Layout>
+          </ProtectedRoute>
+        }
       />
       
       {/* Catch all route */}

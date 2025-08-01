@@ -730,6 +730,106 @@ async def test_api_connection(
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
+# AI分析API（認証が必要）
+# =============================================================================
+
+@app.post("/api/ai/analyze-post")
+async def analyze_post_content(
+    data: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+):
+    """投稿内容のAI分析（認証済みユーザーのみ）"""
+    try:
+        content = data.get("content")
+        analysis_type = data.get("analysis_type", "engagement_prediction")
+        
+        if not content:
+            raise HTTPException(status_code=400, detail="投稿内容が必要です")
+        
+        # Groq AI分析クライアント取得
+        groq_client = get_groq_client()
+        
+        if not groq_client.is_available():
+            # AI利用不可の場合は基本分析を返す
+            return _generate_fallback_analysis(content)
+        
+        # AI分析実行
+        analysis_result = await groq_client.analyze_post_content(
+            content=content,
+            analysis_type=analysis_type,
+            user_id=current_user.id
+        )
+        
+        logger.info(f"✅ AI投稿分析完了: {current_user.username}")
+        return analysis_result
+        
+    except Exception as e:
+        logger.error(f"❌ AI投稿分析エラー ({current_user.username}): {e}")
+        # エラー時もフォールバック分析を返す
+        return _generate_fallback_analysis(data.get("content", ""))
+
+def _generate_fallback_analysis(content: str) -> Dict[str, Any]:
+    """AI利用不可時のフォールバック分析"""
+    content_length = len(content) if content else 0
+    
+    # 基本的な分析スコア計算
+    base_score = 50
+    if content_length > 100:
+        base_score += 20
+    if '#' in content:
+        base_score += 10
+    if content_length < 280:
+        base_score += 10
+    
+    return {
+        "overall_score": min(base_score, 95),
+        "engagement_prediction": {
+            "likes": max(50, content_length * 2),
+            "retweets": max(20, content_length),
+            "replies": max(10, content_length // 2),
+        },
+        "sentiment": {
+            "positive": 0.6,
+            "neutral": 0.3,
+            "negative": 0.1,
+        },
+        "keywords": _extract_basic_keywords(content),
+        "recommendations": _generate_basic_recommendations(content),
+        "risk_assessment": "low",
+        "note": "AI分析が利用できないため、基本的な分析を表示しています"
+    }
+
+def _extract_basic_keywords(content: str) -> list:
+    """基本的なキーワード抽出"""
+    if not content:
+        return ["投稿"]
+    
+    common_words = ["AI", "自動化", "テクノロジー", "効率化", "ビジネス", "マーケティング"]
+    found_words = [word for word in common_words if word.lower() in content.lower()]
+    
+    return found_words if found_words else ["一般"]
+
+def _generate_basic_recommendations(content: str) -> list:
+    """基本的な推奨事項生成"""
+    recommendations = []
+    
+    if not content:
+        return ["投稿内容を入力してください"]
+    
+    if len(content) < 50:
+        recommendations.append("投稿をもう少し詳しく書くとエンゲージメントが向上します")
+    
+    if '#' not in content:
+        recommendations.append("関連するハッシュタグを追加することをお勧めします")
+    
+    if len(content) > 280:
+        recommendations.append("投稿が長すぎる可能性があります。簡潔にまとめることを検討してください")
+    
+    recommendations.append("投稿時間を19-21時に設定すると良いでしょう")
+    
+    return recommendations
+
+# =============================================================================
 # レート制限統計API（認証が必要）
 # =============================================================================
 

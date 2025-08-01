@@ -1,10 +1,10 @@
 /**
  * 🤖 X自動反応ツール - レイアウトコンポーネント
- * 
+ *
  * アプリケーション全体のレイアウト構造
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -32,9 +32,16 @@ import { useAuth } from '../hooks/useAuth';
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [automationStats, setAutomationStats] = useState({
+    todayLikes: 0,
+    todayRetweets: 0,
+    isRunning: false,
+    loading: true
+  });
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isAuthenticated } = useAuth();
 
   const navigation = [
     {
@@ -87,6 +94,56 @@ const Layout = ({ children }) => {
       current: location.pathname === '/settings',
     },
   ];
+
+  // API統計データ取得
+  const fetchLayoutStats = async () => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+
+      // ダッシュボード統計取得（通知数と自動化統計のため）
+      const response = await fetch('/api/dashboard/stats', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // 通知数の計算（キューにあるアクション数をベース）
+        setNotificationCount(data.stats?.queued_actions || 0);
+        
+        // 自動化統計の更新
+        setAutomationStats({
+          todayLikes: data.stats?.total_likes || 0,
+          todayRetweets: data.stats?.total_retweets || 0,
+          isRunning: data.is_running || false,
+          loading: false
+        });
+      } else {
+        // エラーの場合はデフォルト値
+        setAutomationStats(prev => ({ ...prev, loading: false }));
+      }
+    } catch (error) {
+      console.error('レイアウト統計取得エラー:', error);
+      setAutomationStats(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // 初回読み込みと定期更新
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchLayoutStats();
+      
+      // 1分ごとに更新
+      const interval = setInterval(fetchLayoutStats, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   const handleLogout = async () => {
     await logout();
@@ -173,16 +230,35 @@ const Layout = ({ children }) => {
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
                       <span className="text-gray-600">今日のいいね:</span>
-                      <span className="font-semibold text-red-600">15件</span>
+                      <span className="font-semibold text-red-600">
+                        {automationStats.loading ? '--' : `${automationStats.todayLikes}件`}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">今日のリポスト:</span>
-                      <span className="font-semibold text-green-600">8件</span>
+                      <span className="font-semibold text-green-600">
+                        {automationStats.loading ? '--' : `${automationStats.todayRetweets}件`}
+                      </span>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-medium text-green-700">稼働中</span>
+                    <div className={`w-2 h-2 rounded-full ${
+                      automationStats.isRunning
+                        ? 'bg-green-500 animate-pulse'
+                        : 'bg-gray-400'
+                    }`}></div>
+                    <span className={`text-xs font-medium ${
+                      automationStats.isRunning
+                        ? 'text-green-700'
+                        : 'text-gray-600'
+                    }`}>
+                      {automationStats.loading
+                        ? '確認中...'
+                        : automationStats.isRunning
+                          ? '稼働中'
+                          : '停止中'
+                      }
+                    </span>
                   </div>
                 </div>
               </li>
@@ -300,9 +376,13 @@ const Layout = ({ children }) => {
               >
                 <span className="sr-only">View notifications</span>
                 <Bell className="h-6 w-6" aria-hidden="true" />
-                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs text-white font-medium">3</span>
-                </span>
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-xs text-white font-medium">
+                      {notificationCount > 99 ? '99+' : notificationCount}
+                    </span>
+                  </span>
+                )}
               </button>
 
               {/* セパレーター */}
