@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..database.connection import get_db_session
 from ..database.models import UserResponse, AutomationAction
-from ..auth.api_manager import get_current_active_user
+from ..auth.dependencies import get_current_active_user
 from ..auth.user_service import api_key_service
 from ..services.action_executor import EngagementAutomationExecutor
 from ..core.twitter_client import TwitterAPIClient

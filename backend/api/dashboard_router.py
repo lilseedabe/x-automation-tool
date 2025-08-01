@@ -18,7 +18,7 @@ from ..database.models import (
 )
 from ..auth.user_service import user_service
 from ..core.twitter_client import twitter_service
-from ..auth.api_manager import get_current_active_user
+from ..auth.dependencies import get_current_active_user
 from ..database.models import UserResponse
 
 # ログ設定
