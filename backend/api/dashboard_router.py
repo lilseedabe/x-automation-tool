@@ -13,11 +13,10 @@ from pydantic import BaseModel
 
 from ..database.connection import get_db_session
 from ..database.models import (
-    User, AutomationAction, APIKeyStatus, 
+    User, AutomationAction,
     UserAPIKey, AutomationSettings
 )
 from ..auth.user_service import user_service
-from ..core.twitter_client import twitter_service
 from ..auth.dependencies import get_current_active_user
 from ..database.models import UserResponse
 
@@ -400,8 +399,8 @@ async def _get_followers_count(user_id: str, session: AsyncSession) -> int:
     result = await session.execute(query)
     api_key = result.scalar_one_or_none()
     
-    if api_key and api_key.followers_count:
-        return api_key.followers_count
+    if api_key and hasattr(api_key, 'followers_count'):
+        return getattr(api_key, 'followers_count', 0)
     
     # APIから取得する場合は非同期で更新（実装は別途）
     return 0

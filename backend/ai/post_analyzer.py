@@ -1,566 +1,397 @@
 """
-高度な投稿分析サービス
-
-このモジュールは以下の機能を提供します：
-- いいね♡とリポスト適性スコアリング
-- 多角的AI分析
-- 安全性チェック
-- タイミング推奨
-- リスク評価
+🧠 X自動反応ツール - AI投稿・ユーザー分析エンジン
+ユーザーのエンゲージメント品質とポテンシャルを AI 分析
 """
 
-import asyncio
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
-import json
+import logging
 import re
 import random
-
-from .groq_client import GroqClient
-from ..core.twitter_client import TwitterClient, Tweet
-
-import logging
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# 高度な投稿分析サービスクラス
-# =============================================================================
-
 class PostAnalyzer:
-    """
-    高度な投稿分析サービス
+    """AI投稿・ユーザー分析クラス"""
     
-    いいね♡とリポストの適性を多角的に分析し、
-    AIによる詳細な推奨事項を提供します。
-    """
-    
-    def __init__(self, groq_client: GroqClient = None, twitter_client: TwitterClient = None):
-        """
-        初期化
-        
-        Args:
-            groq_client (GroqClient): Groq AIクライアント
-            twitter_client (TwitterClient): Twitterクライアント
-        """
-        self.groq_client = groq_client or GroqClient()
-        self.twitter_client = twitter_client or TwitterClient()
-        
-        # 危険キーワードリスト
-        self.risk_keywords = [
-            "炎上", "批判", "叩き", "晒し", "攻撃", "差別", "ヘイト", 
-            "詐欺", "スパム", "政治", "選挙", "宗教", "暴力", "違法"
+    def __init__(self):
+        """AI分析エンジン初期化"""
+        self.spam_keywords = [
+            "無料", "即金", "簡単", "副業", "在宅", "投資", "儲かる", "稼げる",
+            "限定", "今だけ", "急いで", "フォロバ", "相互フォロー", "RT希望",
+            "拡散希望", "いいね返し", "spam", "bot", "fake"
         ]
         
-        # ポジティブキーワードリスト
-        self.positive_keywords = [
-            "素晴らしい", "最高", "感謝", "成功", "達成", "喜び", "幸せ",
-            "技術", "革新", "学習", "成長", "発見", "創造", "協力"
+        self.quality_keywords = [
+            "ありがとう", "素晴らしい", "勉強になる", "参考になる", "感謝",
+            "学び", "成長", "挑戦", "努力", "継続", "目標", "達成",
+            "技術", "開発", "プログラミング", "デザイン", "マーケティング"
         ]
         
-        logger.info("高度なPostAnalyzer初期化完了")
+        logger.info("🧠 AI分析エンジン初期化完了")
     
-    async def analyze_for_like_and_retweet(self, text: str, metrics: Dict[str, int] = None) -> Dict[str, Any]:
+    async def analyze_user_engagement_quality(
+        self, 
+        user_data: Dict[str, Any], 
+        recent_tweets: List[Dict[str, Any]], 
+        original_tweet: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        いいね♡とリポスト向けの詳細分析
+        ユーザーのエンゲージメント品質を AI 分析
         
         Args:
-            text (str): 分析対象テキスト
-            metrics (Dict[str, int]): 既存のエンゲージメント指標
+            user_data: ユーザー基本情報
+            recent_tweets: ユーザーの最近のツイート
+            original_tweet: 元のツイート（反応されたツイート）
             
         Returns:
-            Dict[str, Any]: 詳細分析結果
+            AI分析結果
         """
         try:
-            # 並行して複数の分析を実行
-            tasks = [
-                self._calculate_like_score(text, metrics),
-                self._calculate_retweet_score(text, metrics),
-                self._analyze_safety(text),
-                self._categorize_content(text),
-                self._assess_risk_level(text),
-                self._recommend_timing(text, metrics)
-            ]
+            logger.debug(f"🔍 ユーザー分析開始: @{user_data.get('username', 'unknown')}")
             
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # 各種スコアを計算
+            profile_score = self._analyze_profile_quality(user_data)
+            activity_score = self._analyze_activity_quality(recent_tweets)
+            engagement_score = self._analyze_engagement_authenticity(user_data, original_tweet)
+            content_score = self._analyze_content_quality(recent_tweets)
             
-            like_score = results[0] if not isinstance(results[0], Exception) else 0
-            retweet_score = results[1] if not isinstance(results[1], Exception) else 0
-            safety_check = results[2] if not isinstance(results[2], Exception) else {"safe": False, "reason": "分析エラー"}
-            content_category = results[3] if not isinstance(results[3], Exception) else "不明"
-            risk_level = results[4] if not isinstance(results[4], Exception) else "高"
-            timing_recommendation = results[5] if not isinstance(results[5], Exception) else "後で"
-            
-            # 総合的な推奨アクション決定
-            recommended_action = self._determine_recommended_action(
-                like_score, retweet_score, safety_check, risk_level
-            )
-            
-            # 信頼度計算
-            confidence = self._calculate_confidence(like_score, retweet_score, safety_check)
-            
-            analysis_result = {
-                "like_score": like_score,
-                "retweet_score": retweet_score,
-                "timing_recommendation": timing_recommendation,
-                "safety_check": safety_check["safe"],
-                "safety_reason": safety_check.get("reason", ""),
-                "content_category": content_category,
-                "risk_level": risk_level,
-                "recommended_action": recommended_action,
-                "confidence": confidence,
-                "detailed_analysis": {
-                    "text_length": len(text),
-                    "has_hashtags": "#" in text,
-                    "has_mentions": "@" in text,
-                    "has_urls": "http" in text.lower(),
-                    "word_count": len(text.split()),
-                    "positive_keywords_found": self._count_keywords(text, self.positive_keywords),
-                    "risk_keywords_found": self._count_keywords(text, self.risk_keywords)
-                },
-                "ai_reasoning": await self._generate_ai_reasoning(text, like_score, retweet_score, safety_check),
-                "analysis_timestamp": datetime.now().isoformat()
+            # 総合スコア計算（重み付け平均）
+            weights = {
+                "profile": 0.25,
+                "activity": 0.20,
+                "engagement": 0.30,
+                "content": 0.25
             }
             
-            logger.info(f"詳細分析完了: いいね={like_score}, リポスト={retweet_score}, 安全性={safety_check['safe']}")
+            final_score = (
+                profile_score * weights["profile"] +
+                activity_score * weights["activity"] +
+                engagement_score * weights["engagement"] +
+                content_score * weights["content"]
+            )
+            
+            # スコアを0-1の範囲に正規化
+            final_score = max(0, min(1, final_score))
+            
+            # 品質カテゴリを決定
+            quality_category = self._determine_quality_category(final_score)
+            
+            # エンゲージメント推奨度を計算
+            engagement_recommendation = self._calculate_engagement_recommendation(
+                final_score, user_data, recent_tweets
+            )
+            
+            analysis_result = {
+                "engagement_score": round(final_score, 3),
+                "quality_category": quality_category,
+                "score_breakdown": {
+                    "profile_score": round(profile_score, 3),
+                    "activity_score": round(activity_score, 3),
+                    "engagement_score": round(engagement_score, 3),
+                    "content_score": round(content_score, 3)
+                },
+                "engagement_recommendation": engagement_recommendation,
+                "analysis_details": {
+                    "follower_ratio": self._calculate_follower_ratio(user_data),
+                    "activity_level": self._assess_activity_level(recent_tweets),
+                    "content_diversity": self._assess_content_diversity(recent_tweets),
+                    "spam_indicators": self._detect_spam_indicators(user_data, recent_tweets)
+                },
+                "analyzed_at": datetime.now(timezone.utc)
+            }
+            
+            logger.debug(f"✅ ユーザー分析完了: @{user_data.get('username')} スコア={final_score:.3f}")
             return analysis_result
             
         except Exception as e:
-            logger.error(f"詳細分析エラー: {e}")
+            logger.error(f"❌ ユーザー分析エラー: {str(e)}")
+            # デフォルトの低スコアを返す
             return {
-                "error": f"分析エラー: {str(e)}",
-                "like_score": 0,
-                "retweet_score": 0,
-                "safety_check": False,
-                "risk_level": "高",
-                "recommended_action": "skip",
-                "confidence": 0,
-                "analysis_timestamp": datetime.now().isoformat()
+                "engagement_score": 0.1,
+                "quality_category": "very_low",
+                "score_breakdown": {
+                    "profile_score": 0.1,
+                    "activity_score": 0.1,
+                    "engagement_score": 0.1,
+                    "content_score": 0.1
+                },
+                "engagement_recommendation": "avoid",
+                "analysis_details": {"error": str(e)},
+                "analyzed_at": datetime.now(timezone.utc)
             }
     
-    async def _calculate_like_score(self, text: str, metrics: Dict[str, int] = None) -> int:
-        """
-        いいね適性スコア計算
+    def _analyze_profile_quality(self, user_data: Dict[str, Any]) -> float:
+        """プロフィール品質を分析"""
+        score = 0.5  # ベーススコア
         
-        Args:
-            text (str): テキスト
-            metrics (Dict[str, int]): エンゲージメント指標
+        try:
+            # フォロワー数分析
+            followers = user_data["public_metrics"]["followers_count"]
+            following = user_data["public_metrics"]["following_count"]
             
-        Returns:
-            int: いいねスコア (0-100)
-        """
-        score = 50  # ベーススコア
+            # フォロワー数による加点
+            if followers > 1000:
+                score += 0.2
+            elif followers > 100:
+                score += 0.1
+            elif followers < 10:
+                score -= 0.2
+            
+            # フォロー比率分析
+            if following > 0:
+                ratio = followers / following
+                if 0.5 <= ratio <= 2.0:
+                    score += 0.1
+                elif ratio < 0.1 or ratio > 10:
+                    score -= 0.2
+            
+            # 認証バッジ
+            if user_data.get("verified"):
+                score += 0.2
+            
+            # プロフィール記述
+            bio = user_data.get("description", "")
+            if bio:
+                score += 0.1
+                # スパムキーワードチェック
+                if any(keyword in bio.lower() for keyword in self.spam_keywords):
+                    score -= 0.3
+                # 品質キーワードチェック
+                if any(keyword in bio.lower() for keyword in self.quality_keywords):
+                    score += 0.1
+            
+        except Exception as e:
+            logger.warning(f"⚠️ プロフィール分析エラー: {str(e)}")
         
-        # テキスト長評価
-        text_length = len(text)
-        if 50 <= text_length <= 150:
-            score += 15  # 適切な長さ
-        elif text_length > 280:
-            score -= 10  # 長すぎる
-        
-        # ポジティブコンテンツ評価
-        positive_count = self._count_keywords(text, self.positive_keywords)
-        score += min(positive_count * 5, 20)
-        
-        # ハッシュタグ評価
-        hashtag_count = text.count('#')
-        if 1 <= hashtag_count <= 3:
-            score += 10
-        elif hashtag_count > 5:
-            score -= 5
-        
-        # 既存エンゲージメント評価
-        if metrics:
-            existing_likes = metrics.get("like_count", 0)
-            if existing_likes > 50:
-                score += 15
-            elif existing_likes > 10:
-                score += 10
-        
-        # 感情表現評価
-        emotion_indicators = ["！", "♡", "❤️", "😊", "🎉", "✨"]
-        emotion_count = sum(text.count(indicator) for indicator in emotion_indicators)
-        score += min(emotion_count * 3, 15)
-        
-        # リスクキーワード減点
-        risk_count = self._count_keywords(text, self.risk_keywords)
-        score -= risk_count * 15
-        
-        return max(0, min(100, score))
+        return max(0, min(1, score))
     
-    async def _calculate_retweet_score(self, text: str, metrics: Dict[str, int] = None) -> int:
-        """
-        リポスト適性スコア計算
+    def _analyze_activity_quality(self, recent_tweets: List[Dict[str, Any]]) -> float:
+        """アクティビティ品質を分析"""
+        score = 0.5  # ベーススコア
         
-        Args:
-            text (str): テキスト
-            metrics (Dict[str, int]): エンゲージメント指標
+        try:
+            if not recent_tweets:
+                return 0.2  # ツイートがない場合は低スコア
             
-        Returns:
-            int: リポストスコア (0-100)
-        """
-        score = 40  # ベーススコア（リポストはより慎重）
-        
-        # 情報価値評価
-        info_keywords = ["発表", "リリース", "発見", "研究", "開発", "技術", "革新", "ニュース"]
-        info_count = self._count_keywords(text, info_keywords)
-        score += min(info_count * 10, 25)
-        
-        # 教育価値評価
-        educational_keywords = ["学習", "教育", "解説", "方法", "ガイド", "tips", "コツ"]
-        edu_count = self._count_keywords(text, educational_keywords)
-        score += min(edu_count * 8, 20)
-        
-        # 既存のリポスト実績
-        if metrics:
-            existing_retweets = metrics.get("retweet_count", 0)
-            existing_likes = metrics.get("like_count", 0)
+            # ツイート数による評価
+            tweet_count = len(recent_tweets)
+            if 2 <= tweet_count <= 10:
+                score += 0.2
+            elif tweet_count > 15:
+                score -= 0.1  # 過度な投稿は減点
             
-            # リポスト率評価
-            if existing_likes > 0:
-                retweet_ratio = existing_retweets / existing_likes
-                if 0.1 <= retweet_ratio <= 0.3:  # 適切なリポスト率
-                    score += 15
-                elif retweet_ratio > 0.5:  # リポスト率が高すぎる（炎上リスク）
-                    score -= 20
+            # エンゲージメント率分析
+            total_likes = sum(tweet.get("public_metrics", {}).get("like_count", 0) for tweet in recent_tweets)
+            total_retweets = sum(tweet.get("public_metrics", {}).get("retweet_count", 0) for tweet in recent_tweets)
+            
+            avg_engagement = (total_likes + total_retweets) / tweet_count if tweet_count > 0 else 0
+            
+            if avg_engagement > 50:
+                score += 0.3
+            elif avg_engagement > 10:
+                score += 0.2
+            elif avg_engagement > 1:
+                score += 0.1
+            
+        except Exception as e:
+            logger.warning(f"⚠️ アクティビティ分析エラー: {str(e)}")
         
-        # ブランド安全性評価
-        brand_safe_keywords = ["公式", "正式", "認定", "専門", "権威"]
-        brand_count = self._count_keywords(text, brand_safe_keywords)
-        score += min(brand_count * 5, 15)
-        
-        # 質の高さ評価
-        quality_indicators = ["詳細", "分析", "検証", "根拠", "データ", "統計"]
-        quality_count = self._count_keywords(text, quality_indicators)
-        score += min(quality_count * 7, 20)
-        
-        # リスクキーワード大幅減点（リポストはブランドリスクが高い）
-        risk_count = self._count_keywords(text, self.risk_keywords)
-        score -= risk_count * 25
-        
-        return max(0, min(100, score))
+        return max(0, min(1, score))
     
-    async def _analyze_safety(self, text: str) -> Dict[str, Any]:
-        """
-        安全性分析
+    def _analyze_engagement_authenticity(self, user_data: Dict[str, Any], original_tweet: Dict[str, Any]) -> float:
+        """エンゲージメントの真正性を分析"""
+        score = 0.6  # ベーススコア
         
-        Args:
-            text (str): テキスト
+        try:
+            # エンゲージメントタイプによる評価
+            engagement_type = user_data.get("engagement_type", "")
             
-        Returns:
-            Dict[str, Any]: 安全性分析結果
-        """
-        safety_issues = []
+            if engagement_type == "like":
+                score += 0.1  # いいねは一般的
+            elif engagement_type == "retweet":
+                score += 0.2  # リツイートはより価値が高い
+            elif engagement_type == "reply":
+                score += 0.3  # リプライは最も価値が高い
+            
+            # エンゲージメントタイミング分析
+            engagement_time = user_data.get("engagement_time")
+            if engagement_time:
+                # 即座の反応は真正性が高い
+                score += 0.1
+            
+            # ユーザーのフォロワー数とエンゲージメントの関係
+            followers = user_data["public_metrics"]["followers_count"]
+            if 100 <= followers <= 10000:
+                score += 0.1  # 中規模ユーザーは価値が高い
+            elif followers > 100000:
+                score -= 0.1  # 大規模アカウントは影響力があるが個人的関係は薄い
+            
+        except Exception as e:
+            logger.warning(f"⚠️ エンゲージメント真正性分析エラー: {str(e)}")
         
-        # リスクキーワードチェック
-        risk_found = self._count_keywords(text, self.risk_keywords)
-        if risk_found > 0:
-            safety_issues.append("危険キーワード検出")
-        
-        # URL安全性チェック
-        if "http" in text.lower():
-            # 簡易的な危険URLパターンチェック
-            dangerous_patterns = [".tk", ".ml", "bit.ly", "短縮URL", "怪しい"]
-            if any(pattern in text.lower() for pattern in dangerous_patterns):
-                safety_issues.append("危険なURL可能性")
-        
-        # スパムパターンチェック
-        spam_indicators = ["今すぐ", "限定", "無料", "稼げる", "簡単", "確実"]
-        spam_count = self._count_keywords(text, spam_indicators)
-        if spam_count > 2:
-            safety_issues.append("スパム的表現")
-        
-        # 過度な宣伝チェック
-        promo_indicators = ["購入", "販売", "割引", "キャンペーン", "プレゼント"]
-        promo_count = self._count_keywords(text, promo_indicators)
-        if promo_count > 1:
-            safety_issues.append("過度な宣伝")
-        
-        # 長すぎるハッシュタグ
-        hashtag_count = text.count('#')
-        if hashtag_count > 5:
-            safety_issues.append("ハッシュタグ過多")
-        
-        is_safe = len(safety_issues) == 0
-        
-        return {
-            "safe": is_safe,
-            "issues": safety_issues,
-            "reason": "; ".join(safety_issues) if safety_issues else "安全性に問題なし"
-        }
+        return max(0, min(1, score))
     
-    async def _categorize_content(self, text: str) -> str:
-        """
-        コンテンツカテゴリ分析
+    def _analyze_content_quality(self, recent_tweets: List[Dict[str, Any]]) -> float:
+        """コンテンツ品質を分析"""
+        score = 0.5  # ベーススコア
         
-        Args:
-            text (str): テキスト
+        try:
+            if not recent_tweets:
+                return 0.2
             
-        Returns:
-            str: カテゴリ名
-        """
-        categories = {
-            "技術": ["技術", "開発", "プログラミング", "AI", "IT", "エンジニア", "コード"],
-            "ビジネス": ["ビジネス", "経営", "起業", "マーケティング", "営業", "会社"],
-            "教育": ["学習", "教育", "勉強", "研究", "知識", "スキル", "成長"],
-            "エンターテイメント": ["映画", "音楽", "ゲーム", "アニメ", "芸能", "スポーツ"],
-            "ライフスタイル": ["生活", "健康", "料理", "旅行", "ファッション", "美容"],
-            "ニュース": ["ニュース", "速報", "発表", "報告", "更新", "リリース"],
-            "個人的": ["私", "個人", "日記", "感想", "思い", "体験"]
-        }
+            quality_count = 0
+            spam_count = 0
+            
+            for tweet in recent_tweets:
+                text = tweet.get("text", "").lower()
+                
+                # 品質コンテンツの検出
+                if any(keyword in text for keyword in self.quality_keywords):
+                    quality_count += 1
+                
+                # スパムコンテンツの検出
+                if any(keyword in text for keyword in self.spam_keywords):
+                    spam_count += 1
+                
+                # URL過多チェック
+                if text.count("http") > 2:
+                    spam_count += 1
+                
+                # ハッシュタグ過多チェック
+                if text.count("#") > 5:
+                    spam_count += 1
+                
+                # 同じ内容の繰り返しチェック
+                # (簡略化実装)
+            
+            # スコア調整
+            if quality_count > 0:
+                score += min(0.3, quality_count * 0.1)
+            
+            if spam_count > 0:
+                score -= min(0.4, spam_count * 0.1)
+            
+            # 多様性ボーナス
+            unique_words = set()
+            for tweet in recent_tweets:
+                words = tweet.get("text", "").split()
+                unique_words.update(words)
+            
+            if len(unique_words) > 50:
+                score += 0.1
+            
+        except Exception as e:
+            logger.warning(f"⚠️ コンテンツ品質分析エラー: {str(e)}")
         
-        text_lower = text.lower()
-        category_scores = {}
-        
-        for category, keywords in categories.items():
-            score = sum(1 for keyword in keywords if keyword in text_lower)
-            category_scores[category] = score
-        
-        if not category_scores or max(category_scores.values()) == 0:
-            return "その他"
-        
-        return max(category_scores, key=category_scores.get)
+        return max(0, min(1, score))
     
-    async def _assess_risk_level(self, text: str) -> str:
-        """
-        リスクレベル評価
-        
-        Args:
-            text (str): テキスト
-            
-        Returns:
-            str: リスクレベル (低/中/高)
-        """
-        risk_score = 0
-        
-        # リスクキーワード
-        risk_count = self._count_keywords(text, self.risk_keywords)
-        risk_score += risk_count * 3
-        
-        # 感情的表現
-        emotional_patterns = ["！！", "???", "絶対", "最悪", "ムカつく", "許せない"]
-        emotional_count = sum(1 for pattern in emotional_patterns if pattern in text)
-        risk_score += emotional_count * 2
-        
-        # 攻撃的表現
-        aggressive_patterns = ["バカ", "アホ", "死ね", "消えろ", "うざい"]
-        aggressive_count = sum(1 for pattern in aggressive_patterns if pattern in text)
-        risk_score += aggressive_count * 5
-        
-        # 政治・宗教関連
-        sensitive_topics = ["政治", "選挙", "宗教", "右翼", "左翼", "政党"]
-        sensitive_count = self._count_keywords(text, sensitive_topics)
-        risk_score += sensitive_count * 4
-        
-        # リスクレベル判定
-        if risk_score >= 10:
-            return "高"
-        elif risk_score >= 5:
-            return "中"
+    def _determine_quality_category(self, score: float) -> str:
+        """スコアから品質カテゴリを決定"""
+        if score >= 0.8:
+            return "excellent"
+        elif score >= 0.6:
+            return "good"
+        elif score >= 0.4:
+            return "fair"
+        elif score >= 0.2:
+            return "poor"
         else:
-            return "低"
+            return "very_poor"
     
-    async def _recommend_timing(self, text: str, metrics: Dict[str, int] = None) -> str:
-        """
-        タイミング推奨
-        
-        Args:
-            text (str): テキスト
-            metrics (Dict[str, int]): エンゲージメント指標
-            
-        Returns:
-            str: 推奨タイミング
-        """
-        # 現在時刻
-        now = datetime.now()
-        hour = now.hour
-        
-        # コンテンツタイプ別推奨
-        if "ニュース" in text or "速報" in text:
-            return "即座に"
-        
-        # 時間帯別推奨
-        if 7 <= hour <= 9:
-            return "1-2分後"  # 朝の通勤時間
-        elif 12 <= hour <= 13:
-            return "数分後"   # 昼休み
-        elif 19 <= hour <= 22:
-            return "1-3分後"  # 夜のゴールデンタイム
+    def _calculate_engagement_recommendation(
+        self, 
+        score: float, 
+        user_data: Dict[str, Any], 
+        recent_tweets: List[Dict[str, Any]]
+    ) -> str:
+        """エンゲージメント推奨度を計算"""
+        if score >= 0.7:
+            return "highly_recommended"
+        elif score >= 0.5:
+            return "recommended"
+        elif score >= 0.3:
+            return "conditional"
         else:
-            return "数分後"
-        
-        # エンゲージメントが既に高い場合は早めに
-        if metrics and metrics.get("like_count", 0) > 50:
-            return "即座に"
-        
-        return "数分後"
+            return "avoid"
     
-    def _determine_recommended_action(self, like_score: int, retweet_score: int, 
-                                    safety_check: Dict[str, Any], risk_level: str) -> str:
-        """
-        推奨アクション決定
-        
-        Args:
-            like_score (int): いいねスコア
-            retweet_score (int): リポストスコア
-            safety_check (Dict[str, Any]): 安全性チェック結果
-            risk_level (str): リスクレベル
-            
-        Returns:
-            str: 推奨アクション
-        """
-        # 安全性チェックで問題がある場合はスキップ
-        if not safety_check.get("safe", False) or risk_level == "高":
-            return "skip"
-        
-        # スコア比較
-        if like_score >= 75 and retweet_score >= 75:
-            return "both"  # 両方実行
-        elif like_score >= 70:
-            return "like"
-        elif retweet_score >= 70:
-            return "retweet"
-        elif like_score >= 60 or retweet_score >= 60:
-            if like_score > retweet_score:
-                return "like"
-            else:
-                return "retweet"
+    def _calculate_follower_ratio(self, user_data: Dict[str, Any]) -> float:
+        """フォロワー比率を計算"""
+        try:
+            followers = user_data["public_metrics"]["followers_count"]
+            following = user_data["public_metrics"]["following_count"]
+            return followers / following if following > 0 else float('inf')
+        except:
+            return 0
+    
+    def _assess_activity_level(self, recent_tweets: List[Dict[str, Any]]) -> str:
+        """アクティビティレベルを評価"""
+        tweet_count = len(recent_tweets)
+        if tweet_count >= 10:
+            return "very_active"
+        elif tweet_count >= 5:
+            return "active"
+        elif tweet_count >= 2:
+            return "moderate"
+        elif tweet_count >= 1:
+            return "low"
         else:
-            return "skip"
+            return "inactive"
     
-    def _calculate_confidence(self, like_score: int, retweet_score: int, 
-                            safety_check: Dict[str, Any]) -> float:
-        """
-        AI分析の信頼度計算
+    def _assess_content_diversity(self, recent_tweets: List[Dict[str, Any]]) -> str:
+        """コンテンツ多様性を評価"""
+        if not recent_tweets:
+            return "none"
         
-        Args:
-            like_score (int): いいねスコア
-            retweet_score (int): リポストスコア
-            safety_check (Dict[str, Any]): 安全性チェック結果
-            
-        Returns:
-            float: 信頼度 (0.0-1.0)
-        """
-        # ベース信頼度
-        base_confidence = 0.7
+        # 簡略化実装: 異なる単語数をカウント
+        all_words = set()
+        for tweet in recent_tweets:
+            words = tweet.get("text", "").split()
+            all_words.update(words)
         
-        # スコアの明確さ
-        max_score = max(like_score, retweet_score)
-        if max_score >= 80:
-            base_confidence += 0.2
-        elif max_score <= 30:
-            base_confidence += 0.1  # 明確に低い場合も信頼度高
+        unique_ratio = len(all_words) / (len(recent_tweets) * 10) if recent_tweets else 0
         
-        # 安全性チェック
-        if safety_check.get("safe", False):
-            base_confidence += 0.1
+        if unique_ratio >= 0.8:
+            return "very_diverse"
+        elif unique_ratio >= 0.6:
+            return "diverse"
+        elif unique_ratio >= 0.4:
+            return "moderate"
+        elif unique_ratio >= 0.2:
+            return "limited"
         else:
-            base_confidence -= 0.2
-        
-        return max(0.0, min(1.0, base_confidence))
+            return "repetitive"
     
-    async def _generate_ai_reasoning(self, text: str, like_score: int, 
-                                   retweet_score: int, safety_check: Dict[str, Any]) -> str:
-        """
-        AI推論理由生成
+    def _detect_spam_indicators(self, user_data: Dict[str, Any], recent_tweets: List[Dict[str, Any]]) -> List[str]:
+        """スパム指標を検出"""
+        indicators = []
         
-        Args:
-            text (str): テキスト
-            like_score (int): いいねスコア
-            retweet_score (int): リポストスコア
-            safety_check (Dict[str, Any]): 安全性チェック結果
+        try:
+            # プロフィールスパムチェック
+            bio = user_data.get("description", "").lower()
+            if any(keyword in bio for keyword in self.spam_keywords):
+                indicators.append("spam_keywords_in_bio")
             
-        Returns:
-            str: AI推論理由
-        """
-        reasoning_parts = []
-        
-        # いいねスコア理由
-        if like_score >= 70:
-            reasoning_parts.append(f"いいね適性が高い（{like_score}点）: ポジティブで親しみやすい内容")
-        elif like_score < 50:
-            reasoning_parts.append(f"いいね適性が低い（{like_score}点）: エンゲージメントが期待できない内容")
-        
-        # リポストスコア理由
-        if retweet_score >= 70:
-            reasoning_parts.append(f"リポスト適性が高い（{retweet_score}点）: 情報価値が高くシェアに適している")
-        elif retweet_score < 50:
-            reasoning_parts.append(f"リポスト適性が低い（{retweet_score}点）: ブランドリスクを考慮")
-        
-        # 安全性理由
-        if not safety_check.get("safe", False):
-            reasoning_parts.append(f"安全性に懸念: {safety_check.get('reason', '不明')}")
-        else:
-            reasoning_parts.append("安全性に問題なし")
-        
-        return "; ".join(reasoning_parts)
-    
-    def _count_keywords(self, text: str, keywords: List[str]) -> int:
-        """
-        キーワード出現回数カウント
-        
-        Args:
-            text (str): テキスト
-            keywords (List[str]): キーワードリスト
+            # フォロー比率異常
+            followers = user_data["public_metrics"]["followers_count"]
+            following = user_data["public_metrics"]["following_count"]
             
-        Returns:
-            int: 出現回数
-        """
-        text_lower = text.lower()
-        return sum(1 for keyword in keywords if keyword in text_lower)
-    
-    # 既存の基本メソッドも残す（互換性のため）
-    async def analyze_post_safety(self, text: str) -> Dict[str, Any]:
-        """基本的な安全性分析（後方互換性）"""
-        safety = await self._analyze_safety(text)
-        return {
-            "safety_score": 0.8 if safety["safe"] else 0.3,
-            "quality_score": random.uniform(0.6, 0.9),
-            "safe": safety["safe"],
-            "reason": safety["reason"]
-        }
-    
-    async def analyze_for_action(self, text: str, metrics: Dict[str, int] = None) -> Dict[str, Any]:
-        """アクション分析（後方互換性）"""
-        analysis = await self.analyze_for_like_and_retweet(text, metrics)
-        return {
-            "recommended_action": analysis["recommended_action"],
-            "confidence": analysis["confidence"],
-            "reasoning": analysis["ai_reasoning"]
-        }
-
-
-# =============================================================================
-# テスト・デバッグ用
-# =============================================================================
-
-if __name__ == "__main__":
-    import asyncio
-    
-    async def test_advanced_analyzer():
-        """高度な分析機能のテスト"""
-        analyzer = PostAnalyzer()
-        
-        test_texts = [
-            "今日は素晴らしい技術発表がありました！AIの未来が楽しみです。 #AI #技術",
-            "政治家は全員腐敗している。絶対に許せない！！！",
-            "新しいプログラミング言語のチュートリアルを公開しました。学習に役立ててください。",
-            "限定セール！今すぐ購入で90%OFF！絶対お得！"
-        ]
-        
-        for i, text in enumerate(test_texts, 1):
-            print(f"\n=== テストケース {i} ===")
-            print(f"テキスト: {text}")
+            if following > followers * 10 and followers < 100:
+                indicators.append("suspicious_follow_ratio")
             
-            analysis = await analyzer.analyze_for_like_and_retweet(text)
+            # ツイートスパムチェック
+            for tweet in recent_tweets:
+                text = tweet.get("text", "").lower()
+                if any(keyword in text for keyword in self.spam_keywords):
+                    indicators.append("spam_keywords_in_tweets")
+                    break
             
-            print(f"いいねスコア: {analysis['like_score']}")
-            print(f"リポストスコア: {analysis['retweet_score']}")
-            print(f"推奨アクション: {analysis['recommended_action']}")
-            print(f"安全性: {analysis['safety_check']}")
-            print(f"リスクレベル: {analysis['risk_level']}")
-            print(f"カテゴリ: {analysis['content_category']}")
-            print(f"信頼度: {analysis['confidence']:.2f}")
-    
-    # テスト実行
-    asyncio.run(test_advanced_analyzer())
+            # URL過多
+            url_count = sum(tweet.get("text", "").count("http") for tweet in recent_tweets)
+            if url_count > len(recent_tweets) * 2:
+                indicators.append("excessive_urls")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ スパム検出エラー: {str(e)}")
+        
+        return indicators

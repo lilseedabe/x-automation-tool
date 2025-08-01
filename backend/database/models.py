@@ -309,6 +309,42 @@ class ActivityLog(Base):
         Index("idx_activity_logs_success", "success"),
     )
 
+class AutomationAction(Base):
+    """自動化アクションログテーブル（dashboard_router用）"""
+    __tablename__ = "automation_actions"
+    
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    # アクション詳細
+    action_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_username: Mapped[Optional[str]] = mapped_column(String(50))
+    target_tweet_id: Mapped[Optional[str]] = mapped_column(String(50))
+    content_preview: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # ステータス
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    
+    # カウント
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
+    retweet_count: Mapped[int] = mapped_column(Integer, default=0)
+    reply_count: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # エラー情報
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # タイムスタンプ
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # 制約
+    __table_args__ = (
+        Index("idx_automation_actions_user_id", "user_id"),
+        Index("idx_automation_actions_status", "status"),
+        Index("idx_automation_actions_created_at", "created_at"),
+        Index("idx_automation_actions_action_type", "action_type"),
+    )
+
 class UserSession(Base):
     """ユーザーセッションテーブル"""
     __tablename__ = "user_sessions"

@@ -1,642 +1,384 @@
 """
-X自動反応アクション実行サービス
-
-このモジュールは以下の機能を提供します：
-- エンゲージユーザーの自動取得・分析
-- いいね♡とリポストの自動実行
-- Groq AI分析との連携
-- 安全性チェック
-- 人間らしいタイミング制御
-- アクションキューの管理
+⚡ X自動反応ツール - エンゲージメント自動化エグゼキューター
+あなたのツイートに反応したユーザーを分析し、相互エンゲージメントを実行
 """
 
+import logging
 import asyncio
 import random
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-import json
-import os
-
-# ログ
-import logging
-
-# 内部モジュール
-from backend.core.twitter_client import TwitterClient
-from backend.ai.groq_client import GroqClient
-from backend.ai.post_analyzer import PostAnalyzer
-from backend.ai.timing_controller import TimingController
-from backend.services.blacklist_service import BlacklistService
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# エンゲージユーザー自動化エグゼキューター
-# =============================================================================
-
 class EngagementAutomationExecutor:
-    """
-    エンゲージユーザー自動化実行エンジン
+    """エンゲージメント自動化実行クラス"""
     
-    特定の投稿にエンゲージしたユーザーの最新投稿を分析し、
-    適切なアクション（いいね♡・リポスト）を実行します。
-    """
-    
-    def __init__(self, user_id: str, credentials: Dict[str, str] = None):
+    def __init__(self, twitter_client, ai_analyzer, user_id: int):
         """
         初期化
         
         Args:
-            user_id (str): ユーザーID
-            credentials (Dict[str, str]): X API認証情報
+            twitter_client: TwitterAPIClient インスタンス
+            ai_analyzer: PostAnalyzer インスタンス
+            user_id: 実行ユーザーID
         """
+        self.twitter_client = twitter_client
+        self.ai_analyzer = ai_analyzer
         self.user_id = user_id
-        
-        # サービス初期化
-        self.twitter_client = TwitterClient(credentials)
-        self.groq_client = GroqClient()
-        self.post_analyzer = PostAnalyzer(self.groq_client)
-        self.timing_controller = TimingController()
-        self.blacklist_service = BlacklistService(user_id)
-        
-        # 実行統計
-        self.execution_stats = {
-            "total_executed": 0,
-            "likes_executed": 0,
-            "retweets_executed": 0,
-            "users_processed": 0,
-            "tweets_analyzed": 0,
-            "errors": 0,
-            "last_execution": None,
-            "daily_count": 0,
-            "last_reset": datetime.now().date()
-        }
-        
-        # 設定
-        self.settings = self._load_user_settings()
-        
-        logger.info(f"EngagementAutomationExecutor初期化完了: user_id={user_id}")
-    
-    def _load_user_settings(self) -> Dict[str, Any]:
-        """ユーザー設定を読み込み"""
-        try:
-            settings_path = f"data/users/{self.user_id}/settings.json"
-            if os.path.exists(settings_path):
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-            else:
-                # デフォルト設定
-                settings = {
-                    "max_daily_actions": 30,
-                    "max_users_per_session": 10,
-                    "auto_like_enabled": True,
-                    "auto_retweet_enabled": True,
-                    "safety_mode": True,
-                    "min_delay_minutes": 2,
-                    "max_delay_minutes": 15,
-                    "active_hours": {"start": 8, "end": 22},
-                    "quality_threshold": 0.7,
-                    "safety_threshold": 0.8,
-                    "random_selection": True,
-                    "min_engagement_score": 60
-                }
-                
-            return settings
-            
-        except Exception as e:
-            logger.error(f"設定読み込みエラー: {e}")
-            return {
-                "max_daily_actions": 30,
-                "max_users_per_session": 10,
-                "auto_like_enabled": True,
-                "auto_retweet_enabled": True,
-                "safety_mode": True,
-                "min_delay_minutes": 2,
-                "max_delay_minutes": 15,
-                "active_hours": {"start": 8, "end": 22},
-                "quality_threshold": 0.7,
-                "safety_threshold": 0.8,
-                "random_selection": True,
-                "min_engagement_score": 60
-            }
-    
-    def _reset_daily_stats(self):
-        """日次統計のリセット"""
-        today = datetime.now().date()
-        if self.execution_stats["last_reset"] != today:
-            self.execution_stats.update({
-                "daily_count": 0,
-                "last_reset": today
-            })
-            logger.info("日次統計をリセットしました")
-    
-    async def is_available(self) -> bool:
-        """
-        実行可能かチェック
-        
-        Returns:
-            bool: 実行可能フラグ
-        """
-        # Twitter APIクライアントのチェック
-        if not self.twitter_client.is_available():
-            return False
-        
-        # 日次制限チェック
-        self._reset_daily_stats()
-        if self.execution_stats["daily_count"] >= self.settings["max_daily_actions"]:
-            return False
-        
-        # 時間帯チェック
-        current_hour = datetime.now().hour
-        active_start = self.settings["active_hours"]["start"]
-        active_end = self.settings["active_hours"]["end"]
-        
-        if not (active_start <= current_hour <= active_end):
-            return False
-        
-        return True
     
     async def analyze_engaging_users(self, tweet_url: str) -> Dict[str, Any]:
         """
-        エンゲージユーザーの分析
+        指定されたツイートにエンゲージしたユーザーを分析
         
         Args:
-            tweet_url (str): 対象ツイートのURL
+            tweet_url: 分析対象のツイートURL
             
         Returns:
-            Dict[str, Any]: 分析結果
+            分析結果辞書
         """
-        if not await self.is_available():
-            return {"error": "現在実行できません（制限または時間外）"}
-        
         try:
+            logger.info(f"🔍 エンゲージユーザー分析開始: {tweet_url}")
+            
             # ツイートIDを抽出
-            tweet_id = self._extract_tweet_id(tweet_url)
+            tweet_id = self.twitter_client.extract_tweet_id_from_url(tweet_url)
             if not tweet_id:
-                return {"error": "無効なツイートURLです"}
+                return {
+                    "success": False,
+                    "error": "無効なツイートURLです"
+                }
             
-            # エンゲージユーザーを取得
-            engaging_users = await self.twitter_client.get_engaging_users(
-                tweet_id, 
-                max_users=self.settings.get("max_users_per_session", 10)
-            )
+            # ツイート情報を取得
+            tweet_result = await self.twitter_client.get_tweet(tweet_id)
+            if not tweet_result.get("success"):
+                return {
+                    "success": False,
+                    "error": "ツイートの取得に失敗しました"
+                }
             
-            if not engaging_users:
-                return {"error": "エンゲージユーザーが見つかりません"}
+            tweet_data = tweet_result["tweet"]
             
-            # ブラックリストフィルタ
-            filtered_users = []
-            for user in engaging_users:
-                if not await self.blacklist_service.is_blacklisted(user.id):
-                    filtered_users.append(user)
+            # いいねしたユーザーを取得
+            liking_users_result = await self.twitter_client.get_liking_users(tweet_id, max_results=100)
+            liking_users = liking_users_result.get("users", []) if liking_users_result.get("success") else []
             
-            if not filtered_users:
-                return {"error": "フィルタ後のユーザーが見つかりません"}
+            # リツイートしたユーザーを取得
+            retweeting_users_result = await self.twitter_client.get_retweeting_users(tweet_id, max_results=100)
+            retweeting_users = retweeting_users_result.get("users", []) if retweeting_users_result.get("success") else []
             
-            # ランダム選択（設定による）
-            if self.settings.get("random_selection", True):
-                random.shuffle(filtered_users)
-                max_analyze = min(len(filtered_users), self.settings.get("max_users_per_session", 10))
-                filtered_users = filtered_users[:max_analyze]
+            # 全エンゲージユーザーをまとめる
+            all_engaging_users = []
             
-            # 各ユーザーの最新投稿を分析
-            analysis_results = []
+            # 重複を避けるためのユーザーIDセット
+            seen_user_ids = set()
             
-            for user in filtered_users:
+            # いいねユーザーを追加
+            for user in liking_users:
+                if user["id"] not in seen_user_ids:
+                    all_engaging_users.append(user)
+                    seen_user_ids.add(user["id"])
+            
+            # リツイートユーザーを追加
+            for user in retweeting_users:
+                if user["id"] not in seen_user_ids:
+                    all_engaging_users.append(user)
+                    seen_user_ids.add(user["id"])
+            
+            # 各ユーザーを AI 分析
+            analyzed_users = []
+            for user in all_engaging_users:
                 try:
-                    # ユーザーの最新ツイート取得
-                    recent_tweets = await self.twitter_client.get_user_recent_tweets(user.id, max_results=3)
+                    # ユーザーの最新ツイートを取得（仮想実装）
+                    recent_tweets = await self._get_user_recent_tweets(user["id"])
                     
-                    if not recent_tweets:
-                        continue
-                    
-                    # 最新ツイートを分析
-                    latest_tweet = recent_tweets[0]
-                    
-                    # AI分析実行
-                    analysis = await self.post_analyzer.analyze_for_like_and_retweet(
-                        latest_tweet.text, 
-                        latest_tweet.public_metrics
+                    # AI 分析実行
+                    ai_analysis = await self.ai_analyzer.analyze_user_engagement_quality(
+                        user_data=user,
+                        recent_tweets=recent_tweets,
+                        original_tweet=tweet_data
                     )
                     
-                    # 結果を格納
-                    user_analysis = {
-                        "user": {
-                            "id": user.id,
-                            "username": user.username,
-                            "name": user.name,
-                            "followers_count": user.public_metrics.get("followers_count", 0),
-                            "verified": user.verified
-                        },
-                        "tweet": {
-                            "id": latest_tweet.id,
-                            "text": latest_tweet.text,
-                            "created_at": latest_tweet.created_at,
-                            "metrics": latest_tweet.public_metrics
-                        },
-                        "analysis": analysis,
-                        "eligible_for_action": self._is_eligible_for_action(analysis)
+                    # 推奨アクションを生成
+                    recommended_actions = self._generate_recommended_actions(
+                        user, recent_tweets, ai_analysis
+                    )
+                    
+                    analyzed_user = {
+                        "user_id": user["id"],
+                        "username": user["username"],
+                        "display_name": user["name"],
+                        "follower_count": user["public_metrics"]["followers_count"],
+                        "following_count": user["public_metrics"]["following_count"],
+                        "profile_image_url": None,  # Twitter API v2では別途取得が必要
+                        "bio": user.get("description", ""),
+                        "verified": user.get("verified", False),
+                        "engagement_type": user["engagement_type"],
+                        "engagement_time": user["engagement_time"],
+                        "ai_score": ai_analysis["engagement_score"],
+                        "recent_tweets": recent_tweets,
+                        "recommended_actions": recommended_actions
                     }
                     
-                    analysis_results.append(user_analysis)
-                    
-                    # レート制限を考慮した待機
-                    await asyncio.sleep(0.2)
+                    analyzed_users.append(analyzed_user)
                     
                 except Exception as e:
-                    logger.error(f"ユーザー分析エラー (ID: {user.id}): {e}")
+                    logger.warning(f"⚠️ ユーザー分析スキップ: {user['username']} - {str(e)}")
                     continue
             
-            # 統計更新
-            self.execution_stats["users_processed"] += len(filtered_users)
-            self.execution_stats["tweets_analyzed"] += len(analysis_results)
+            # 分析サマリーを生成
+            analysis_summary = self._generate_analysis_summary(analyzed_users, tweet_data)
             
             result = {
                 "success": True,
                 "tweet_id": tweet_id,
-                "total_engaging_users": len(engaging_users),
-                "filtered_users": len(filtered_users),
-                "analyzed_users": len(analysis_results),
-                "analysis_results": analysis_results,
-                "timestamp": datetime.now().isoformat()
+                "tweet_author": tweet_data["author"]["username"] if tweet_data.get("author") else "unknown",
+                "tweet_text": tweet_data["text"],
+                "total_engagement_count": len(all_engaging_users),
+                "engaging_users": analyzed_users,
+                "analysis_summary": analysis_summary
             }
             
-            logger.info(f"エンゲージユーザー分析完了: {len(analysis_results)}件")
+            logger.info(f"✅ エンゲージユーザー分析完了: {len(analyzed_users)}人分析")
             return result
             
         except Exception as e:
-            logger.error(f"エンゲージユーザー分析エラー: {e}")
-            return {"error": f"分析エラー: {str(e)}"}
+            logger.error(f"❌ エンゲージユーザー分析エラー: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
-    def _extract_tweet_id(self, tweet_url: str) -> Optional[str]:
+    async def execute_selected_actions(self, selected_actions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        ツイートURLからIDを抽出
+        選択されたアクションを実行
         
         Args:
-            tweet_url (str): ツイートURL
+            selected_actions: 実行するアクション一覧
             
         Returns:
-            Optional[str]: ツイートID
+            実行結果辞書
         """
         try:
-            # URL形式: https://x.com/username/status/1234567890
-            # または: https://twitter.com/username/status/1234567890
-            if "/status/" in tweet_url:
-                parts = tweet_url.split("/status/")
-                if len(parts) >= 2:
-                    tweet_id = parts[1].split("?")[0].split("/")[0]  # クエリパラメータやパスを除去
-                    return tweet_id
-            return None
-        except Exception as e:
-            logger.error(f"ツイートID抽出エラー: {e}")
-            return None
-    
-    def _is_eligible_for_action(self, analysis: Dict[str, Any]) -> bool:
-        """
-        アクション実行対象かどうかを判定
-        
-        Args:
-            analysis (Dict[str, Any]): AI分析結果
+            logger.info(f"⚡ アクション実行開始: {len(selected_actions)}件")
             
-        Returns:
-            bool: 実行対象の場合True
-        """
-        # エラーがある場合は除外
-        if "error" in analysis:
-            return False
-        
-        # 安全性チェック
-        if not analysis.get("safety_check", False):
-            return False
-        
-        # リスクレベルチェック
-        if analysis.get("risk_level") == "高":
-            return False
-        
-        # 最小エンゲージメントスコアチェック
-        min_score = self.settings.get("min_engagement_score", 60)
-        like_score = analysis.get("like_score", 0)
-        retweet_score = analysis.get("retweet_score", 0)
-        
-        if max(like_score, retweet_score) < min_score:
-            return False
-        
-        # 信頼度チェック
-        if analysis.get("confidence", 0) < 0.6:
-            return False
-        
-        return True
-    
-    async def execute_selected_actions(self, selected_analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        選択されたユーザーに対してアクション実行
-        
-        Args:
-            selected_analyses (List[Dict[str, Any]]): 選択された分析結果
+            results = []
+            executed_count = 0
+            failed_count = 0
             
-        Returns:
-            Dict[str, Any]: 実行結果
-        """
-        if not await self.is_available():
-            return {"error": "現在実行できません（制限または時間外）"}
-        
-        results = []
-        successful_actions = 0
-        
-        try:
-            for user_analysis in selected_analyses:
+            for action in selected_actions:
                 try:
-                    user_info = user_analysis["user"]
-                    tweet_info = user_analysis["tweet"]
-                    analysis = user_analysis["analysis"]
-                    
-                    # 推奨アクションを取得
-                    recommended_action = analysis.get("recommended_action", "skip")
-                    
-                    if recommended_action == "skip":
-                        results.append({
-                            "user_id": user_info["id"],
-                            "username": user_info["username"],
-                            "action": "skipped",
-                            "reason": "AI推奨によりスキップ"
-                        })
-                        continue
+                    action_type = action["action_type"]
+                    target_username = action["target_username"]
+                    target_tweet_id = action.get("target_tweet_id")
                     
                     # アクション実行
-                    if recommended_action == "like":
-                        result = await self._execute_like_action(tweet_info["id"], user_info, analysis)
-                    elif recommended_action == "retweet":
-                        result = await self._execute_retweet_action(tweet_info["id"], user_info, analysis)
-                    elif recommended_action == "both":
-                        # いいねを優先実行
-                        result = await self._execute_like_action(tweet_info["id"], user_info, analysis)
+                    if action_type == "like":
+                        result = await self.twitter_client.like_tweet(target_tweet_id)
+                    elif action_type == "retweet":
+                        result = await self.twitter_client.retweet(target_tweet_id)
+                    elif action_type == "reply":
+                        reply_text = action.get("reply_text", "素晴らしい投稿ですね！")
+                        result = await self.twitter_client.reply_to_tweet(target_tweet_id, reply_text)
                     else:
                         result = {
                             "success": False,
-                            "error": f"不明なアクション: {recommended_action}"
+                            "error": f"未対応のアクションタイプ: {action_type}"
                         }
                     
+                    # 結果を記録
+                    action_result = {
+                        "action_type": action_type,
+                        "target_username": target_username,
+                        "target_tweet_id": target_tweet_id,
+                        "success": result.get("success", False),
+                        "content_preview": action.get("content_preview", "")
+                    }
+                    
                     if result.get("success"):
-                        successful_actions += 1
+                        executed_count += 1
+                        logger.info(f"✅ アクション成功: {action_type} -> @{target_username}")
+                    else:
+                        failed_count += 1
+                        action_result["error"] = result.get("error", "不明なエラー")
+                        logger.warning(f"❌ アクション失敗: {action_type} -> @{target_username} - {action_result['error']}")
                     
-                    results.append({
-                        "user_id": user_info["id"],
-                        "username": user_info["username"],
-                        "tweet_id": tweet_info["id"],
-                        "action": recommended_action,
-                        "result": result,
-                        "ai_analysis": analysis
-                    })
+                    results.append(action_result)
                     
-                    # 人間らしい間隔で実行
-                    await self._add_human_delay()
+                    # レート制限を避けるため少し待機
+                    await asyncio.sleep(1)
                     
                 except Exception as e:
-                    logger.error(f"個別アクション実行エラー: {e}")
-                    results.append({
-                        "user_id": user_analysis.get("user", {}).get("id", "unknown"),
-                        "username": user_analysis.get("user", {}).get("username", "unknown"),
-                        "action": "error",
+                    failed_count += 1
+                    action_result = {
+                        "action_type": action.get("action_type", "unknown"),
+                        "target_username": action.get("target_username", "unknown"),
+                        "target_tweet_id": action.get("target_tweet_id"),
+                        "success": False,
                         "error": str(e)
-                    })
+                    }
+                    results.append(action_result)
+                    logger.error(f"❌ アクション実行エラー: {str(e)}")
             
-            # 実行記録保存
-            await self._save_execution_batch_record(results)
+            # 実行サマリーを生成
+            execution_summary = {
+                "total_actions": len(selected_actions),
+                "executed_count": executed_count,
+                "failed_count": failed_count,
+                "success_rate": (executed_count / len(selected_actions)) * 100 if selected_actions else 0,
+                "execution_time": datetime.now(timezone.utc)
+            }
             
-            return {
-                "success": True,
-                "total_attempted": len(selected_analyses),
-                "successful_actions": successful_actions,
+            result = {
+                "success": executed_count > 0,
+                "executed_count": executed_count,
+                "failed_count": failed_count,
                 "results": results,
-                "timestamp": datetime.now().isoformat()
+                "execution_summary": execution_summary
             }
             
+            logger.info(f"✅ アクション実行完了: 成功={executed_count}, 失敗={failed_count}")
+            return result
+            
         except Exception as e:
-            logger.error(f"バッチアクション実行エラー: {e}")
-            return {"error": f"実行エラー: {str(e)}"}
-    
-    async def _execute_like_action(self, tweet_id: str, user_info: Dict[str, Any], 
-                                 analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """いいねアクション実行"""
-        if not self.settings.get("auto_like_enabled", True):
-            return {"error": "いいね機能が無効です"}
-        
-        result = await self.twitter_client.like_tweet(tweet_id, safety_check=False)  # 既に分析済み
-        
-        if result.get("success"):
-            self._update_execution_stats("like", True)
-            
-            # 実行記録保存
-            await self._save_execution_record({
-                "action": "like",
-                "tweet_id": tweet_id,
-                "target_user": user_info,
-                "timestamp": datetime.now().isoformat(),
-                "success": True,
-                "ai_analysis": analysis
-            })
-        
-        return result
-    
-    async def _execute_retweet_action(self, tweet_id: str, user_info: Dict[str, Any], 
-                                    analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """リポストアクション実行"""
-        if not self.settings.get("auto_retweet_enabled", True):
-            return {"error": "リポスト機能が無効です"}
-        
-        result = await self.twitter_client.retweet(tweet_id, safety_check=False)  # 既に分析済み
-        
-        if result.get("success"):
-            self._update_execution_stats("retweet", True)
-            
-            # 実行記録保存
-            await self._save_execution_record({
-                "action": "retweet",
-                "tweet_id": tweet_id,
-                "target_user": user_info,
-                "timestamp": datetime.now().isoformat(),
-                "success": True,
-                "ai_analysis": analysis
-            })
-        
-        return result
-    
-    async def _add_human_delay(self):
-        """人間らしい遅延を追加"""
-        min_delay = self.settings.get("min_delay_minutes", 2) * 60
-        max_delay = self.settings.get("max_delay_minutes", 15) * 60
-        
-        # ランダムな遅延時間を計算
-        delay = random.uniform(min_delay, max_delay)
-        
-        logger.info(f"人間らしい遅延: {delay/60:.1f}分")
-        await asyncio.sleep(delay)
-    
-    def _update_execution_stats(self, action_type: str, success: bool):
-        """実行統計を更新"""
-        self._reset_daily_stats()
-        
-        self.execution_stats["total_executed"] += 1
-        self.execution_stats["daily_count"] += 1
-        self.execution_stats["last_execution"] = datetime.now().isoformat()
-        
-        if success:
-            if action_type == "like":
-                self.execution_stats["likes_executed"] += 1
-            elif action_type == "retweet":
-                self.execution_stats["retweets_executed"] += 1
-        else:
-            self.execution_stats["errors"] += 1
-    
-    async def _save_execution_record(self, record: Dict[str, Any]):
-        """実行記録を保存"""
-        try:
-            history_path = f"data/users/{self.user_id}/engagement_history.json"
-            
-            # 既存履歴読み込み
-            history = []
-            if os.path.exists(history_path):
-                with open(history_path, 'r', encoding='utf-8') as f:
-                    history = json.load(f)
-            
-            # 新記録追加
-            history.append(record)
-            
-            # 古い記録削除（最新200件まで保持）
-            if len(history) > 200:
-                history = history[-200:]
-            
-            # 保存
-            os.makedirs(os.path.dirname(history_path), exist_ok=True)
-            with open(history_path, 'w', encoding='utf-8') as f:
-                json.dump(history, f, ensure_ascii=False, indent=2)
-                
-        except Exception as e:
-            logger.error(f"実行記録保存エラー: {e}")
-    
-    async def _save_execution_batch_record(self, batch_results: List[Dict[str, Any]]):
-        """バッチ実行記録を保存"""
-        try:
-            batch_history_path = f"data/users/{self.user_id}/batch_history.json"
-            
-            # 既存履歴読み込み
-            history = []
-            if os.path.exists(batch_history_path):
-                with open(batch_history_path, 'r', encoding='utf-8') as f:
-                    history = json.load(f)
-            
-            # 新バッチ記録追加
-            batch_record = {
-                "timestamp": datetime.now().isoformat(),
-                "total_actions": len(batch_results),
-                "successful_actions": len([r for r in batch_results if r.get("result", {}).get("success")]),
-                "results": batch_results
+            logger.error(f"❌ アクション実行エラー: {str(e)}")
+            return {
+                "success": False,
+                "executed_count": 0,
+                "failed_count": len(selected_actions),
+                "results": [],
+                "execution_summary": {"error": str(e)},
+                "error": str(e)
             }
-            
-            history.append(batch_record)
-            
-            # 古い記録削除（最新50バッチまで保持）
-            if len(history) > 50:
-                history = history[-50:]
-            
-            # 保存
-            os.makedirs(os.path.dirname(batch_history_path), exist_ok=True)
-            with open(batch_history_path, 'w', encoding='utf-8') as f:
-                json.dump(history, f, ensure_ascii=False, indent=2)
-                
-        except Exception as e:
-            logger.error(f"バッチ記録保存エラー: {e}")
     
-    async def get_execution_stats(self) -> Dict[str, Any]:
+    async def _get_user_recent_tweets(self, user_id: str, max_tweets: int = 5) -> List[Dict[str, Any]]:
         """
-        実行統計を取得
+        ユーザーの最新ツイートを取得
         
+        Args:
+            user_id: ユーザーID
+            max_tweets: 取得する最大ツイート数
+            
         Returns:
-            Dict[str, Any]: 統計情報
+            最新ツイート一覧
         """
-        self._reset_daily_stats()
+        try:
+            # 実際の実装では Twitter API v2 の get_users_tweets を使用
+            # ここでは簡略化したダミーデータを返す
+            tweets = []
+            for i in range(min(max_tweets, 3)):
+                tweets.append({
+                    "id": f"tweet_{user_id}_{i}",
+                    "text": f"ユーザー {user_id} のサンプルツイート {i+1}",
+                    "created_at": datetime.now(timezone.utc),
+                    "public_metrics": {
+                        "like_count": random.randint(0, 50),
+                        "retweet_count": random.randint(0, 20),
+                        "reply_count": random.randint(0, 10)
+                    }
+                })
+            
+            return tweets
+            
+        except Exception as e:
+            logger.warning(f"⚠️ ユーザーツイート取得失敗: {user_id} - {str(e)}")
+            return []
+    
+    def _generate_recommended_actions(
+        self, 
+        user: Dict[str, Any], 
+        recent_tweets: List[Dict[str, Any]], 
+        ai_analysis: Dict[str, Any]
+    ) -> List[str]:
+        """
+        推奨アクションを生成
         
-        # Twitter API統計も取得
-        twitter_stats = await self.twitter_client.get_automation_stats()
+        Args:
+            user: ユーザー情報
+            recent_tweets: 最新ツイート
+            ai_analysis: AI分析結果
+            
+        Returns:
+            推奨アクション一覧
+        """
+        actions = []
+        
+        # AI スコアに基づいて推奨アクションを決定
+        score = ai_analysis.get("engagement_score", 0)
+        
+        if score >= 0.8:
+            # 高品質ユーザー: 積極的エンゲージメント
+            if recent_tweets:
+                latest_tweet = recent_tweets[0]
+                actions.extend([
+                    f"いいね: {latest_tweet['text'][:50]}...",
+                    f"リツイート: {latest_tweet['text'][:50]}..."
+                ])
+                
+                # フォロワー数が適度なら返信も推奨
+                if user["public_metrics"]["followers_count"] < 10000:
+                    actions.append(f"返信: {latest_tweet['text'][:50]}...")
+        
+        elif score >= 0.6:
+            # 中品質ユーザー: 選択的エンゲージメント
+            if recent_tweets:
+                latest_tweet = recent_tweets[0]
+                actions.append(f"いいね: {latest_tweet['text'][:50]}...")
+        
+        elif score >= 0.4:
+            # 低品質ユーザー: 慎重なエンゲージメント
+            actions.append("観察のみ推奨")
+        
+        else:
+            # 非常に低品質: エンゲージメント非推奨
+            actions.append("エンゲージメント非推奨")
+        
+        return actions
+    
+    def _generate_analysis_summary(
+        self, 
+        analyzed_users: List[Dict[str, Any]], 
+        tweet_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        分析サマリーを生成
+        
+        Args:
+            analyzed_users: 分析済みユーザー一覧
+            tweet_data: 元ツイートデータ
+            
+        Returns:
+            分析サマリー
+        """
+        if not analyzed_users:
+            return {
+                "total_users": 0,
+                "average_score": 0,
+                "quality_distribution": {},
+                "recommended_engagement_count": 0
+            }
+        
+        # AI スコアの統計
+        scores = [user["ai_score"] for user in analyzed_users]
+        average_score = sum(scores) / len(scores)
+        
+        # 品質分布
+        high_quality = len([s for s in scores if s >= 0.8])
+        medium_quality = len([s for s in scores if 0.6 <= s < 0.8])
+        low_quality = len([s for s in scores if 0.4 <= s < 0.6])
+        very_low_quality = len([s for s in scores if s < 0.4])
+        
+        # 推奨エンゲージメント数
+        recommended_count = high_quality + (medium_quality // 2)
         
         return {
-            "engagement_stats": self.execution_stats,
-            "twitter_stats": twitter_stats,
-            "settings": self.settings,
-            "available": await self.is_available(),
-            "timestamp": datetime.now().isoformat()
+            "total_users": len(analyzed_users),
+            "average_score": round(average_score, 2),
+            "quality_distribution": {
+                "high_quality": high_quality,
+                "medium_quality": medium_quality,
+                "low_quality": low_quality,
+                "very_low_quality": very_low_quality
+            },
+            "recommended_engagement_count": recommended_count,
+            "analysis_time": datetime.now(timezone.utc)
         }
-
-
-# =============================================================================
-# 既存のActionExecutorクラス（互換性維持）
-# =============================================================================
-
-class ActionExecutor:
-    """
-    従来のActionExecutorクラス（後方互換性のため維持）
-    """
-    
-    def __init__(self, user_id: str, credentials: Dict[str, str] = None):
-        # EngagementAutomationExecutorに委譲
-        self.engagement_executor = EngagementAutomationExecutor(user_id, credentials)
-    
-    async def execute_auto_like(self, tweet_id: str, force: bool = False) -> Dict[str, Any]:
-        """従来のいいね実行メソッド"""
-        return await self.engagement_executor.twitter_client.like_tweet(tweet_id, not force)
-    
-    async def execute_auto_retweet(self, tweet_id: str, force: bool = False) -> Dict[str, Any]:
-        """従来のリポスト実行メソッド"""
-        return await self.engagement_executor.twitter_client.retweet(tweet_id, not force)
-    
-    async def get_execution_stats(self) -> Dict[str, Any]:
-        """従来の統計取得メソッド"""
-        return await self.engagement_executor.get_execution_stats()
-
-
-# =============================================================================
-# テスト・デバッグ用
-# =============================================================================
-
-if __name__ == "__main__":
-    import asyncio
-    
-    async def test_engagement_automation():
-        """エンゲージメント自動化のテスト"""
-        # テスト用ユーザーID
-        test_user_id = "test_user"
-        
-        # EngagementAutomationExecutor初期化
-        executor = EngagementAutomationExecutor(test_user_id)
-        
-        if not await executor.is_available():
-            print("EngagementAutomationExecutorが利用できません")
-            return
-        
-        print("=== エンゲージユーザー分析テスト ===")
-        test_tweet_url = "https://x.com/test_user/status/1234567890"
-        
-        # エンゲージユーザー分析
-        analysis_result = await executor.analyze_engaging_users(test_tweet_url)
-        
-        if analysis_result.get("success"):
-            print(f"分析成功: {analysis_result['analyzed_users']}ユーザーを分析")
-            
-            # 実行対象を選択（テスト用に最初の2件）
-            eligible_analyses = [
-                result for result in analysis_result["analysis_results"]
-                if result["eligible_for_action"]
-            ][:2]
-            
-            if eligible_analyses:
-                print(f"\n=== アクション実行テスト（{len(eligible_analyses)}件）===")
-                execution_result = await executor.execute_selected_actions(eligible_analyses)
-                
-                if execution_result.get("success"):
-                    print(f"実行完了: {execution_result['successful_actions']}件成功")
-                else:
-                    print(f"実行エラー: {execution_result.get('error')}")
-        else:
-            print(f"分析エラー: {analysis_result.get('error')}")
-    
-    # テスト実行
-    asyncio.run(test_engagement_automation())
