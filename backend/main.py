@@ -221,18 +221,18 @@ app = FastAPI(
 )
 
 # CORS設定
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://x-automation-tool.onrender.com").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
 # APIルーター登録
 app.include_router(dashboard_router)
 app.include_router(automation_router)
-
-)
 
 # 静的ファイル（フロントエンド）
 if os.path.exists("frontend/build"):
