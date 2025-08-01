@@ -1,10 +1,11 @@
 /**
- * 🤖 X自動反応ツール - 認証フック（修正版）
- * 
+ * 🤖 X自動反応ツール - 認証フック（APIクライアント対応版）
+ *
  * ユーザー認証とセッション管理
  */
 
 import React, { useState, useEffect, createContext, useContext } from 'react';
+import apiClient from '../utils/api';
 
 const AuthContext = createContext();
 
@@ -93,25 +94,10 @@ export const AuthProvider = ({ children }) => {
         return { success: true, user: demoUser };
       }
 
-      // 🔧 本番環境での実際のAPI呼び出し（修正版）
+      // 🔧 APIクライアントを使用したログイン
       console.log('🔗 API呼び出し開始:', credentials);
       
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials),
-      });
-
-      console.log('📡 レスポンス状況:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'ログインに失敗しました' }));
-        throw new Error(errorData.detail || 'ログインに失敗しました');
-      }
-
-      const data = await response.json();
+      const data = await apiClient.login(credentials);
       console.log('📋 レスポンスデータ:', data);
       
       // 🔧 認証情報を正しく保存
@@ -152,19 +138,8 @@ export const AuthProvider = ({ children }) => {
       if (process.env.NODE_ENV === 'production' && token && token !== 'null') {
         try {
           console.log('📡 サーバーログアウト実行');
-          const response = await fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-          });
-          
-          console.log('📋 ログアウトレスポンス:', response.status);
-          
-          if (!response.ok) {
-            console.warn('⚠️ サーバーログアウトが失敗しましたが、ローカルログアウトを続行');
-          }
+          await apiClient.logout();
+          console.log('✅ サーバーログアウト成功');
         } catch (fetchError) {
           console.warn('⚠️ サーバーログアウトエラー:', fetchError.message);
         }

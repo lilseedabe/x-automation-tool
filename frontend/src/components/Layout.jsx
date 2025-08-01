@@ -28,6 +28,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../utils/api';
 
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -100,34 +101,19 @@ const Layout = ({ children }) => {
     if (!isAuthenticated) return;
     
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-
       // ダッシュボード統計取得（通知数と自動化統計のため）
-      const response = await fetch('/api/dashboard/stats', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      const data = await api.getDashboardStats();
+      
+      // 通知数の計算（キューにあるアクション数をベース）
+      setNotificationCount(data.stats?.queued_actions || 0);
+      
+      // 自動化統計の更新
+      setAutomationStats({
+        todayLikes: data.stats?.total_likes || 0,
+        todayRetweets: data.stats?.total_retweets || 0,
+        isRunning: data.is_running || false,
+        loading: false
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        
-        // 通知数の計算（キューにあるアクション数をベース）
-        setNotificationCount(data.stats?.queued_actions || 0);
-        
-        // 自動化統計の更新
-        setAutomationStats({
-          todayLikes: data.stats?.total_likes || 0,
-          todayRetweets: data.stats?.total_retweets || 0,
-          isRunning: data.is_running || false,
-          loading: false
-        });
-      } else {
-        // エラーの場合はデフォルト値
-        setAutomationStats(prev => ({ ...prev, loading: false }));
-      }
     } catch (error) {
       console.error('レイアウト統計取得エラー:', error);
       setAutomationStats(prev => ({ ...prev, loading: false }));
@@ -417,13 +403,6 @@ const Layout = ({ children }) => {
                     exit={{ opacity: 0, scale: 0.95 }}
                     className="absolute right-0 z-10 mt-2.5 w-48 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5"
                   >
-                    <Link
-                      to="/profile"
-                      className="block px-3 py-1 text-sm leading-6 text-gray-900 hover:bg-gray-50"
-                      onClick={() => setProfileDropdownOpen(false)}
-                    >
-                      プロフィール
-                    </Link>
                     <Link
                       to="/settings"
                       className="block px-3 py-1 text-sm leading-6 text-gray-900 hover:bg-gray-50"

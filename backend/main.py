@@ -39,6 +39,7 @@ from backend.ai.groq_client import get_groq_client
 from backend.core.rate_limiter import rate_limiter_manager
 from backend.services.secure_request_handler import handle_secure_request
 from backend.api.dashboard_router import router as dashboard_router
+from backend.api.automation_router import router as automation_router
 
 # ログ設定
 logging.basicConfig(
@@ -227,8 +228,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-# ダッシュボードAPI
+# APIルーター登録
 app.include_router(dashboard_router)
+app.include_router(automation_router)
 
 )
 

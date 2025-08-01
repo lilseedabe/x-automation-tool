@@ -1,6 +1,6 @@
 /**
- * 🤖 X自動反応ツール - エンゲージユーザー自動化パネル（レート制限対応）
- * 
+ * 🤖 X自動反応ツール - エンゲージユーザー自動化パネル（リアルAPI対応版）
+ *
  * 特定投稿のエンゲージユーザーの最新投稿に対するAI分析付き自動いいね・リポスト
  * X APIレート制限を厳密に管理
  */
@@ -37,17 +37,21 @@ import {
   Gauge,
   AlertCircle,
 } from 'lucide-react';
+import apiClient from '../utils/api';
+import { useAuth } from '../hooks/useAuth';
 
 const AutomationPanel = () => {
+  const { user, isAuthenticated } = useAuth();
+  
   const [automationStats, setAutomationStats] = useState({
-    likes_today: 15,
-    retweets_today: 8,
-    success_rate: 94.2,
-    is_running: true,
-    remaining_likes: 35,
-    remaining_retweets: 12,
-    processed_users: 23,
-    total_analyzed: 45,
+    likes_today: 0,
+    retweets_today: 0,
+    success_rate: 0,
+    is_running: false,
+    remaining_likes: 0,
+    remaining_retweets: 0,
+    processed_users: 0,
+    total_analyzed: 0,
   });
 
   // レート制限情報の状態
@@ -57,169 +61,160 @@ const AutomationPanel = () => {
       "15min_used": 0,
       "15min_remaining": 1,
       "24hour_limit": 1000,
-      "24hour_used": 15,
-      "24hour_remaining": 985,
+      "24hour_used": 0,
+      "24hour_remaining": 1000,
       "next_available_seconds": 0,
       "can_make_request": true
     },
     retweet: {
       "15min_limit": 50,
-      "15min_used": 3,
-      "15min_remaining": 47,
+      "15min_used": 0,
+      "15min_remaining": 50,
       "24hour_limit": 1000,
-      "24hour_used": 8,
-      "24hour_remaining": 992,
+      "24hour_used": 0,
+      "24hour_remaining": 1000,
       "next_available_seconds": 0,
       "can_make_request": true
     },
     get_liking_users: {
       "15min_limit": 75,
-      "15min_used": 2,
-      "15min_remaining": 73,
+      "15min_used": 0,
+      "15min_remaining": 75,
       "24hour_limit": 7200,
-      "24hour_used": 23,
-      "24hour_remaining": 7177,
+      "24hour_used": 0,
+      "24hour_remaining": 7200,
       "next_available_seconds": 0,
       "can_make_request": true
     }
   });
 
   const [yourTweetUrl, setYourTweetUrl] = useState('');
+  const [userPassword, setUserPassword] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [engagingUsers, setEngagingUsers] = useState([]);
   const [analysisResults, setAnalysisResults] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [executionQueue, setExecutionQueue] = useState([]);
+  const [error, setError] = useState(null);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
-  // 模擬的なエンゲージユーザーデータ
-  const mockEngagingUsers = [
-    {
-      id: 'user1',
-      username: 'tech_enthusiast',
-      name: 'Tech Lover',
-      followers_count: 1500,
-      verified: false,
-      engagement_type: 'like',
-      latest_tweet: {
-        id: 'tweet1',
-        text: 'AI技術の最新動向について研究中です。機械学習の可能性は無限大！ #AI #ML',
-        created_at: '2024-01-15T10:30:00Z',
-        public_metrics: { like_count: 25, retweet_count: 8, reply_count: 3 }
-      }
-    },
-    {
-      id: 'user2',
-      username: 'startup_founder',
-      name: 'Startup CEO',
-      followers_count: 3200,
-      verified: true,
-      engagement_type: 'retweet',
-      latest_tweet: {
-        id: 'tweet2',
-        text: '新しいプロダクトのローンチ準備完了！チーム一丸となって頑張りました 🚀',
-        created_at: '2024-01-15T09:15:00Z',
-        public_metrics: { like_count: 45, retweet_count: 12, reply_count: 7 }
-      }
-    },
-    {
-      id: 'user3',
-      username: 'dev_community',
-      name: 'Developer Hub',
-      followers_count: 850,
-      verified: false,
-      engagement_type: 'like',
-      latest_tweet: {
-        id: 'tweet3',
-        text: 'React 18の新機能を試してみました。パフォーマンスが大幅に向上！ #React #JavaScript',
-        created_at: '2024-01-15T08:45:00Z',
-        public_metrics: { like_count: 30, retweet_count: 15, reply_count: 5 }
-      }
+  // 初期データ読み込み
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadInitialData();
     }
-  ];
+  }, [isAuthenticated]);
+
+  // 初期データ読み込み
+  const loadInitialData = async () => {
+    try {
+      // アクションキューを読み込み
+      const queueData = await apiClient.getActionQueue();
+      if (queueData.success) {
+        setExecutionQueue(queueData.queued_actions);
+      }
+
+      // レート制限データを読み込み（あれば）
+      try {
+        const rateLimitData = await apiClient.getMyRateLimits();
+        if (rateLimitData.rate_limits) {
+          setRateLimitStats(rateLimitData.rate_limits);
+        }
+      } catch (rateLimitError) {
+        console.warn('レート制限データの読み込みに失敗:', rateLimitError);
+      }
+
+    } catch (error) {
+      console.error('初期データ読み込みエラー:', error);
+      setError('初期データの読み込みに失敗しました');
+    }
+  };
 
   // レート制限情報を定期的に更新
   useEffect(() => {
-    const interval = setInterval(() => {
-      // レート制限の回復をシミュレート
-      setRateLimitStats(prev => ({
-        ...prev,
-        like: {
-          ...prev.like,
-          "15min_remaining": Math.min(prev.like["15min_limit"], prev.like["15min_remaining"] + 1),
-          "next_available_seconds": Math.max(0, prev.like["next_available_seconds"] - 60)
-        },
-        retweet: {
-          ...prev.retweet,
-          "15min_remaining": Math.min(prev.retweet["15min_limit"], prev.retweet["15min_remaining"] + 5),
-          "next_available_seconds": Math.max(0, prev.retweet["next_available_seconds"] - 60)
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const rateLimitData = await apiClient.getMyRateLimits();
+        if (rateLimitData.rate_limits) {
+          setRateLimitStats(rateLimitData.rate_limits);
         }
-      }));
+      } catch (error) {
+        console.warn('レート制限データ更新エラー:', error);
+      }
     }, 60000); // 1分ごと
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   const handleAnalyzeEngagingUsers = async () => {
-    if (!yourTweetUrl.trim()) return;
+    if (!yourTweetUrl.trim()) {
+      setError('ツイートURLを入力してください');
+      return;
+    }
+
+    if (!userPassword.trim()) {
+      setPasswordModalOpen(true);
+      return;
+    }
 
     // レート制限チェック
     if (!rateLimitStats.get_liking_users.can_make_request) {
-      alert('エンゲージユーザー取得のレート制限に達しています。しばらく待ってから再試行してください。');
+      setError('エンゲージユーザー取得のレート制限に達しています。しばらく待ってから再試行してください。');
       return;
     }
 
     setIsAnalyzing(true);
     setEngagingUsers([]);
     setAnalysisResults([]);
+    setError(null);
     
-    // ステップ1: エンゲージユーザー取得をシミュレート
-    setTimeout(() => {
-      setEngagingUsers(mockEngagingUsers);
+    try {
+      console.log('🔍 エンゲージユーザー分析開始:', yourTweetUrl);
       
-      // レート制限を消費
-      setRateLimitStats(prev => ({
-        ...prev,
-        get_liking_users: {
-          ...prev.get_liking_users,
-          "15min_used": prev.get_liking_users["15min_used"] + 1,
-          "15min_remaining": prev.get_liking_users["15min_remaining"] - 1,
-          "24hour_used": prev.get_liking_users["24hour_used"] + 1,
-          "24hour_remaining": prev.get_liking_users["24hour_remaining"] - 1
-        }
-      }));
+      const response = await apiClient.analyzeEngagingUsers(yourTweetUrl, userPassword);
       
-      // ステップ2: 各ユーザーの最新投稿をAI分析
-      setTimeout(() => {
-        const results = mockEngagingUsers.map(user => {
-          const likeScore = Math.floor(Math.random() * 40) + 60; // 60-100
-          const retweetScore = Math.floor(Math.random() * 40) + 50; // 50-90
-          const safetyCheck = Math.random() > 0.2; // 80%安全
-          const riskLevel = ["低", "低", "低", "中"][Math.floor(Math.random() * 4)];
-          
-          return {
-            user_id: user.id,
-            username: user.username,
-            tweet_id: user.latest_tweet.id,
-            tweet_text: user.latest_tweet.text,
-            analysis: {
-              like_score: likeScore,
-              retweet_score: retweetScore,
-              timing_recommendation: ["即座に", "数分後", "1-2分後"][Math.floor(Math.random() * 3)],
-              safety_check: safetyCheck,
-              content_category: ["技術", "ビジネス", "教育", "デザイン"][Math.floor(Math.random() * 4)],
-              risk_level: riskLevel,
-              recommended_action: likeScore > retweetScore ? "like" : "retweet",
-              confidence: Math.random() * 0.3 + 0.7, // 0.7-1.0
-              ai_reasoning: `${safetyCheck ? '安全性問題なし' : '軽微な懸念あり'}。${likeScore > 75 ? 'エンゲージメント高期待' : '標準的な反応予想'}。`
-            }
-          };
-        });
+      if (response.success) {
+        const results = response.analyzed_users.map(user => ({
+          user_id: user.user_id,
+          username: user.username,
+          tweet_id: user.recent_tweets[0]?.id || 'unknown',
+          tweet_text: user.recent_tweets[0]?.text || 'ツイートが見つかりません',
+          analysis: {
+            like_score: Math.floor(user.ai_score * 100),
+            retweet_score: Math.floor(user.ai_score * 90),
+            timing_recommendation: "即座に",
+            safety_check: user.ai_score > 0.7,
+            content_category: "エンゲージメント",
+            risk_level: user.ai_score > 0.8 ? "低" : user.ai_score > 0.6 ? "中" : "高",
+            recommended_action: user.recommended_actions[0] || "like",
+            confidence: user.ai_score,
+            ai_reasoning: `AI スコア: ${Math.floor(user.ai_score * 100)}% - ${user.recommended_actions.join(', ')}`
+          }
+        }));
         
         setAnalysisResults(results);
-        setIsAnalyzing(false);
-      }, 2000);
+        setEngagingUsers(response.analyzed_users);
+        
+        // 統計更新
+        setAutomationStats(prev => ({
+          ...prev,
+          processed_users: prev.processed_users + response.analyzed_users.length,
+          total_analyzed: prev.total_analyzed + response.total_engagement_count
+        }));
+        
+        console.log('✅ エンゲージユーザー分析完了:', results.length, '人');
+      } else {
+        throw new Error(response.error || '分析に失敗しました');
+      }
       
-    }, 1500);
+    } catch (error) {
+      console.error('❌ エンゲージユーザー分析エラー:', error);
+      setError(`分析エラー: ${error.message}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleSelectUser = (userId) => {
@@ -237,7 +232,12 @@ const AutomationPanel = () => {
     setSelectedUsers(randomSelected);
   };
 
-  const handleExecuteSelectedActions = () => {
+  const handleExecuteSelectedActions = async () => {
+    if (!userPassword.trim()) {
+      setPasswordModalOpen(true);
+      return;
+    }
+
     // レート制限チェック
     const likesNeeded = selectedUsers.filter(userId => {
       const analysis = analysisResults.find(r => r.user_id === userId);
@@ -250,57 +250,86 @@ const AutomationPanel = () => {
     }).length;
 
     if (likesNeeded > rateLimitStats.like["15min_remaining"]) {
-      alert(`いいね制限不足: ${likesNeeded}件必要ですが、残り${rateLimitStats.like["15min_remaining"]}件です。`);
+      setError(`いいね制限不足: ${likesNeeded}件必要ですが、残り${rateLimitStats.like["15min_remaining"]}件です。`);
       return;
     }
 
     if (retweetsNeeded > rateLimitStats.retweet["15min_remaining"]) {
-      alert(`リポスト制限不足: ${retweetsNeeded}件必要ですが、残り${rateLimitStats.retweet["15min_remaining"]}件です。`);
+      setError(`リポスト制限不足: ${retweetsNeeded}件必要ですが、残り${rateLimitStats.retweet["15min_remaining"]}件です。`);
       return;
     }
 
-    const newActions = selectedUsers.map(userId => {
-      const userAnalysis = analysisResults.find(r => r.user_id === userId);
-      if (!userAnalysis) return null;
+    try {
+      setError(null);
       
-      return {
-        id: Date.now() + Math.random(),
-        user_id: userId,
-        username: userAnalysis.username,
-        tweet_id: userAnalysis.tweet_id,
-        tweet_text: userAnalysis.tweet_text,
-        action_type: userAnalysis.analysis.recommended_action,
-        ai_scores: {
-          like_score: userAnalysis.analysis.like_score,
-          retweet_score: userAnalysis.analysis.retweet_score
-        },
-        confidence: userAnalysis.analysis.confidence,
-        scheduled_time: new Date(Date.now() + Math.random() * 600000 + 60000), // 1-11分後
-        status: 'pending'
-      };
-    }).filter(Boolean);
+      // 選択されたアクションを準備
+      const selectedActions = selectedUsers.map(userId => {
+        const userAnalysis = analysisResults.find(r => r.user_id === userId);
+        if (!userAnalysis) return null;
+        
+        return {
+          action_type: userAnalysis.analysis.recommended_action,
+          target_user_id: userAnalysis.user_id,
+          target_username: userAnalysis.username,
+          target_tweet_id: userAnalysis.tweet_id,
+          confidence_score: userAnalysis.analysis.confidence,
+          ai_reasoning: userAnalysis.analysis.ai_reasoning
+        };
+      }).filter(Boolean);
 
-    setExecutionQueue(prev => [...prev, ...newActions]);
-    setSelectedUsers([]);
-
-    // レート制限を消費（シミュレート）
-    setRateLimitStats(prev => ({
-      ...prev,
-      like: {
-        ...prev.like,
-        "15min_used": prev.like["15min_used"] + likesNeeded,
-        "15min_remaining": prev.like["15min_remaining"] - likesNeeded,
-        "24hour_used": prev.like["24hour_used"] + likesNeeded,
-        "24hour_remaining": prev.like["24hour_remaining"] - likesNeeded
-      },
-      retweet: {
-        ...prev.retweet,
-        "15min_used": prev.retweet["15min_used"] + retweetsNeeded,
-        "15min_remaining": prev.retweet["15min_remaining"] - retweetsNeeded,
-        "24hour_used": prev.retweet["24hour_used"] + retweetsNeeded,
-        "24hour_remaining": prev.retweet["24hour_remaining"] - retweetsNeeded
+      console.log('⚡ アクション実行開始:', selectedActions);
+      
+      const response = await apiClient.executeActions(selectedActions, userPassword);
+      
+      if (response.success) {
+        console.log('✅ アクション実行完了:', response);
+        
+        // 実行キューを更新
+        const newQueueItems = response.results.map(result => ({
+          id: Date.now() + Math.random(),
+          user_id: result.target_user_id,
+          username: result.target_username,
+          tweet_id: result.target_tweet_id,
+          tweet_text: result.content_preview || 'コンテンツなし',
+          action_type: result.action_type,
+          status: result.success ? 'completed' : 'failed',
+          scheduled_time: new Date(),
+          error: result.error,
+          ai_scores: {
+            like_score: result.action_type === 'like' ? 85 : 70,
+            retweet_score: result.action_type === 'retweet' ? 85 : 70
+          }
+        }));
+        
+        setExecutionQueue(prev => [...prev, ...newQueueItems]);
+        setSelectedUsers([]);
+        
+        // 統計更新
+        setAutomationStats(prev => ({
+          ...prev,
+          likes_today: prev.likes_today + response.results.filter(r => r.action_type === 'like' && r.success).length,
+          retweets_today: prev.retweets_today + response.results.filter(r => r.action_type === 'retweet' && r.success).length,
+          success_rate: ((prev.likes_today + prev.retweets_today + response.executed_count) / (prev.total_analyzed || 1)) * 100
+        }));
+        
+        // レート制限データをリフレッシュ
+        try {
+          const rateLimitData = await apiClient.getMyRateLimits();
+          if (rateLimitData.rate_limits) {
+            setRateLimitStats(rateLimitData.rate_limits);
+          }
+        } catch (rateLimitError) {
+          console.warn('レート制限データ更新エラー:', rateLimitError);
+        }
+        
+      } else {
+        throw new Error(response.error || 'アクション実行に失敗しました');
       }
-    }));
+      
+    } catch (error) {
+      console.error('❌ アクション実行エラー:', error);
+      setError(`実行エラー: ${error.message}`);
+    }
   };
 
   const getRateLimitColor = (remaining, limit) => {
@@ -616,6 +645,16 @@ const AutomationPanel = () => {
             </button>
           </div>
 
+          {/* エラー表示 */}
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+                <span className="text-sm font-medium text-red-800">{error}</span>
+              </div>
+            </div>
+          )}
+
           {/* レート制限警告 */}
           {!rateLimitStats.get_liking_users.can_make_request && (
             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -833,6 +872,63 @@ const AutomationPanel = () => {
           </div>
         </div>
       </div>
+
+      {/* パスワード入力モーダル */}
+      {passwordModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Shield className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">パスワード認証</h3>
+                <p className="text-sm text-gray-500">APIキー復号のためパスワードを入力してください</p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <input
+                type="password"
+                value={userPassword}
+                onChange={(e) => setUserPassword(e.target.value)}
+                placeholder="ユーザーパスワード"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoFocus
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    setPasswordModalOpen(false);
+                    if (yourTweetUrl.trim()) {
+                      handleAnalyzeEngagingUsers();
+                    }
+                  }
+                }}
+              />
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    setPasswordModalOpen(false);
+                    if (yourTweetUrl.trim()) {
+                      handleAnalyzeEngagingUsers();
+                    }
+                  }}
+                  disabled={!userPassword.trim()}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  確認
+                </button>
+                <button
+                  onClick={() => setPasswordModalOpen(false)}
+                  className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

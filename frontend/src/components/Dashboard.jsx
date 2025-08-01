@@ -1,6 +1,6 @@
 /**
- * 🤖 X自動反応ツール - ダッシュボード
- * 
+ * 🤖 X自動反応ツール - ダッシュボード（APIクライアント対応版）
+ *
  * シンプルで実用的なダッシュボード画面
  */
 
@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import apiClient from '../utils/api';
 
 const Dashboard = () => {
   const { user, isAuthenticated } = useAuth();
@@ -45,47 +46,39 @@ const Dashboard = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState(null);
 
-  // 本番環境用のAPIデータ取得
+  // 統合APIクライアントを使用したデータ取得
   const fetchDashboardData = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token || !isAuthenticated) {
+      if (!isAuthenticated) {
         setError('認証が必要です');
         return;
       }
 
-      const response = await fetch('/api/dashboard/stats', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      console.log('📊 ダッシュボードデータ取得開始');
+      const data = await apiClient.getDashboardStats();
+      
+      console.log('✅ ダッシュボードデータ取得完了:', data);
       
       setStats({
-        totalLikes: data.total_likes || 0,
-        totalRetweets: data.total_retweets || 0,
-        totalReplies: data.total_replies || 0,
-        totalFollowers: data.total_followers || 0,
-        todayActions: data.today_actions || 0,
-        queuedActions: data.queued_actions || 0,
-        successRate: data.success_rate || 0,
-        activeTime: data.active_time || '0分',
+        totalLikes: data.stats?.total_likes || 0,
+        totalRetweets: data.stats?.total_retweets || 0,
+        totalReplies: data.stats?.total_replies || 0,
+        totalFollowers: data.stats?.total_followers || 0,
+        todayActions: data.stats?.today_actions || 0,
+        queuedActions: data.stats?.queued_actions || 0,
+        successRate: data.stats?.success_rate || 0,
+        activeTime: data.stats?.active_time || '0分',
         loading: false,
       });
 
       setRecentActivity(data.recent_activity || []);
       setChartData(data.chart_data || []);
       setIsRunning(data.is_running || false);
+      setError(null);
 
     } catch (error) {
-      console.error('ダッシュボードデータ取得エラー:', error);
-      setError('データの取得に失敗しました');
+      console.error('❌ ダッシュボードデータ取得エラー:', error);
+      setError(`データの取得に失敗しました: ${error.message}`);
       setStats(prev => ({ ...prev, loading: false }));
     }
   };
