@@ -23,6 +23,8 @@ import {
   Play,
   Pause,
   AlertCircle,
+  Link,
+  Send,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import apiClient from '../utils/api';
@@ -45,6 +47,8 @@ const Dashboard = () => {
   const [chartData, setChartData] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState(null);
+  const [tweetUrl, setTweetUrl] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
 
   // 統合APIクライアントを使用したデータ取得
   const fetchDashboardData = async () => {
@@ -536,6 +540,78 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* クイック分析セクション - ダッシュボード統合版 */}
+      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <Link className="h-6 w-6 text-purple-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              クイック分析
+            </h3>
+            <p className="text-sm text-gray-500">
+              ツイートURLを入力してエンゲージユーザーを分析
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex space-x-3">
+            <div className="flex-1">
+              <input
+                type="url"
+                value={tweetUrl}
+                onChange={(e) => setTweetUrl(e.target.value)}
+                placeholder="https://x.com/username/status/..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                disabled={analyzing}
+              />
+            </div>
+            <button
+              onClick={() => {
+                if (tweetUrl.trim()) {
+                  // X自動化パネルに遷移
+                  window.location.href = '/automation';
+                }
+              }}
+              disabled={!tweetUrl.trim() || analyzing}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+            >
+              <Send className="h-4 w-4" />
+              <span>分析開始</span>
+            </button>
+          </div>
+          
+          <div className="flex items-center space-x-4 text-sm text-gray-600">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span>エンゲージユーザー分析</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>自動いいね・リツイート設定</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span>AI分析レポート</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <Bot className="h-4 w-4 text-blue-600 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-900 mb-1">使い方</p>
+              <p className="text-blue-800">
+                分析したいツイートのURLを入力してください。エンゲージしたユーザーを分析し、自動いいね・リツイートの設定ができます。
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

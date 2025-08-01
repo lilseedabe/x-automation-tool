@@ -24,39 +24,83 @@ import {
   RefreshCw,
   Timer,
 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { api } from '../utils/api';
 
 const ActionQueue = () => {
-  const [actions, setActions] = useState([
-    {
-      id: 1,
-      type: 'like',
-      target: '@example_user',
-      content: 'すごいツイートですね！',
-      scheduledTime: new Date(Date.now() + 30000),
-      status: 'pending',
-    },
-    {
-      id: 2,
-      type: 'retweet',
-      target: '@tech_news',
-      content: '最新技術のニュース',
-      scheduledTime: new Date(Date.now() + 60000),
-      status: 'pending',
-    },
-    {
-      id: 3,
-      type: 'like',
-      target: '@ai_researcher',
-      content: 'AIに関する興味深い研究',
-      scheduledTime: new Date(Date.now() + 120000),
-      status: 'pending',
-    },
-  ]);
-
+  const { isAuthenticated } = useAuth();
+  const [actions, setActions] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
   const completedActions = actions.filter(action => action.status === 'completed');
   const pendingActions = actions.filter(action => action.status === 'pending');
+
+  // API統合: アクションキュー取得
+  const fetchActionQueue = async () => {
+    try {
+      if (!isAuthenticated) {
+        setError('認証が必要です');
+        setLoading(false);
+        return;
+      }
+
+      console.log('📋 アクションキュー取得開始');
+      const data = await api.getActionQueue();
+      
+      console.log('✅ アクションキュー取得完了:', data);
+      
+      // APIレスポンスをフロントエンド形式に変換
+      const formattedActions = (data.actions || []).map(action => ({
+        id: action.id,
+        type: action.action_type,
+        target: action.target_user || action.target,
+        content: action.content || action.description,
+        scheduledTime: new Date(action.scheduled_time || action.created_at),
+        status: action.status,
+      }));
+
+      setActions(formattedActions);
+      setError(null);
+    } catch (error) {
+      console.error('❌ アクションキュー取得エラー:', error);
+      setError(`データの取得に失敗しました: ${error.message}`);
+      // エラー時はデモデータを表示
+      setActions([
+        {
+          id: 'demo-1',
+          type: 'like',
+          target: '@demo_user',
+          content: 'デモ: いいねアクション',
+          scheduledTime: new Date(Date.now() + 30000),
+          status: 'pending',
+        },
+        {
+          id: 'demo-2',
+          type: 'retweet',
+          target: '@demo_tech',
+          content: 'デモ: リツイートアクション',
+          scheduledTime: new Date(Date.now() + 60000),
+          status: 'pending',
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 初回読み込みと定期更新
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchActionQueue();
+      
+      // 30秒ごとに更新
+      const interval = setInterval(fetchActionQueue, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let interval;

@@ -4,60 +4,129 @@
  * ブラックリストの表示・編集・管理機能
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Shield, UserX, Plus, Search, X, AlertTriangle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { api } from '../utils/api';
 
 const BlacklistManager = () => {
-  const [blacklist, setBlacklist] = useState([
-    {
-      id: 1,
-      username: 'spam_user',
-      reason: 'スパムアカウント',
-      blockType: 'both',
-      addedDate: '2025-07-20'
-    },
-    {
-      id: 2,
-      username: 'bot_account',
-      reason: 'ボットアカウント',
-      blockType: 'like',
-      addedDate: '2025-07-19'
-    },
-    {
-      id: 3,
-      username: 'inappropriate_content',
-      reason: '不適切なコンテンツ',
-      blockType: 'retweet',
-      addedDate: '2025-07-18'
-    }
-  ]);
-
+  const { isAuthenticated } = useAuth();
+  const [blacklist, setBlacklist] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [newUser, setNewUser] = useState({
     username: '',
     reason: '',
     blockType: 'both'
   });
-
   const [searchTerm, setSearchTerm] = useState('');
 
-  const addToBlacklist = () => {
-    if (!newUser.username.trim()) return;
+  // API統合: ブラックリスト取得
+  const fetchBlacklist = async () => {
+    try {
+      if (!isAuthenticated) {
+        setError('認証が必要です');
+        setLoading(false);
+        return;
+      }
 
-    const newEntry = {
-      id: Date.now(),
-      username: newUser.username.replace('@', ''),
-      reason: newUser.reason || '理由未記載',
-      blockType: newUser.blockType,
-      addedDate: new Date().toISOString().split('T')[0]
-    };
+      console.log('🚫 ブラックリスト取得開始');
+      const data = await api.getBlacklist();
+      
+      console.log('✅ ブラックリスト取得完了:', data);
+      
+      // APIレスポンスをフロントエンド形式に変換
+      const formattedBlacklist = (data.blacklist || []).map(item => ({
+        id: item.id,
+        username: item.username,
+        reason: item.reason || '理由未記載',
+        blockType: item.block_type || 'both',
+        addedDate: item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      }));
 
-    setBlacklist(prev => [newEntry, ...prev]);
-    setNewUser({ username: '', reason: '', blockType: 'both' });
+      setBlacklist(formattedBlacklist);
+      setError(null);
+    } catch (error) {
+      console.error('❌ ブラックリスト取得エラー:', error);
+      setError(`データの取得に失敗しました: ${error.message}`);
+      // エラー時はデモデータを表示
+      setBlacklist([
+        {
+          id: 'demo-1',
+          username: 'demo_spam_user',
+          reason: 'デモ: スパムアカウント',
+          blockType: 'both',
+          addedDate: new Date().toISOString().split('T')[0]
+        },
+        {
+          id: 'demo-2',
+          username: 'demo_bot_account',
+          reason: 'デモ: ボットアカウント',
+          blockType: 'like',
+          addedDate: new Date().toISOString().split('T')[0]
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const removeFromBlacklist = (id) => {
-    setBlacklist(prev => prev.filter(item => item.id !== id));
+  // 初回読み込み
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchBlacklist();
+    }
+  }, [isAuthenticated]);
+
+  // API統合: ブラックリスト追加
+  const addToBlacklist = async () => {
+    if (!newUser.username.trim()) return;
+
+    try {
+      const username = newUser.username.replace('@', '');
+      
+      console.log('🚫 ブラックリスト追加開始:', username);
+      await api.addToBlacklist(username, newUser.reason || '理由未記載');
+      
+      console.log('✅ ブラックリスト追加完了');
+      
+      // ローカル状態も更新
+      const newEntry = {
+        id: Date.now(),
+        username: username,
+        reason: newUser.reason || '理由未記載',
+        blockType: newUser.blockType,
+        addedDate: new Date().toISOString().split('T')[0]
+      };
+
+      setBlacklist(prev => [newEntry, ...prev]);
+      setNewUser({ username: '', reason: '', blockType: 'both' });
+      setError(null);
+    } catch (error) {
+      console.error('❌ ブラックリスト追加エラー:', error);
+      setError(`追加に失敗しました: ${error.message}`);
+    }
+  };
+
+  // API統合: ブラックリスト削除
+  const removeFromBlacklist = async (id) => {
+    try {
+      const item = blacklist.find(item => item.id === id);
+      if (!item) return;
+
+      console.log('🚫 ブラックリスト削除開始:', item.username);
+      await api.removeFromBlacklist(item.username);
+      
+      console.log('✅ ブラックリスト削除完了');
+      
+      // ローカル状態も更新
+      setBlacklist(prev => prev.filter(item => item.id !== id));
+      setError(null);
+    } catch (error) {
+      console.error('❌ ブラックリスト削除エラー:', error);
+      setError(`削除に失敗しました: ${error.message}`);
+    }
   };
 
   const filteredBlacklist = blacklist.filter(item =>
