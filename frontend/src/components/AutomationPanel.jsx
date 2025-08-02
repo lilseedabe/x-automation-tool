@@ -616,6 +616,30 @@ const AutomationPanel = () => {
             </p>
           </div>
         </div>
+        {/* Freeプラン制限案内 */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-4">
+          <h3 className="text-lg font-semibold text-yellow-800 mb-3">
+            🔒 エンゲージメント分析（Freeプラン制限中）
+          </h3>
+          <p className="text-yellow-700 mb-4">
+            この機能はFreeプランでは利用できません。代わりに「お気に入りユーザー」機能をご利用ください。
+          </p>
+          <div className="bg-white rounded p-4 mb-4">
+            <h4 className="font-medium mb-2">📋 利用可能な代替機能:</h4>
+            <ul className="text-sm space-y-1">
+              <li>• お気に入りユーザーを手動登録</li>
+              <li>• 登録ユーザーの新着ツイートに自動いいね・リポスト</li>
+              <li>• AIによる人間らしい自動化</li>
+              <li>• Freeプランでも月間500アクション利用可能</li>
+            </ul>
+          </div>
+          <button
+            onClick={() => window.location.href = '/favorite-users'}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+          >
+            お気に入りユーザー管理を開く
+          </button>
+        </div>
 
         <div className="space-y-4">
           <div className="flex space-x-4">

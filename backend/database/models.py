@@ -351,6 +351,41 @@ class AutomationAction(Base):
     )
 
 # ===================================================================
+# お気に入りユーザー・処理済みツイートテーブル追加
+# ===================================================================
+
+class FavoriteUser(Base):
+    """お気に入りユーザーテーブル"""
+    __tablename__ = "favorite_users"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    target_user_id = Column(String(20), nullable=False)
+    username = Column(String(15), nullable=False)
+    auto_like = Column(Boolean, default=True)
+    auto_repost = Column(Boolean, default=False)
+    keywords_filter = Column(Text)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    last_processed = Column(TIMESTAMP(timezone=True))
+    is_active = Column(Boolean, default=True)
+    __table_args__ = (
+        Index('idx_user_target', 'user_id', 'target_user_id'),
+        Index('idx_username_lookup', 'username'),
+    )
+
+class ProcessedTweet(Base):
+    """処理済みツイートテーブル（重複防止用）"""
+    __tablename__ = "processed_tweets"
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    tweet_id = Column(String(20), nullable=False)
+    action_type = Column(String(10), nullable=False)
+    processed_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    ai_confidence = Column(Integer)
+    __table_args__ = (
+        Index('idx_user_tweet_action', 'user_id', 'tweet_id', 'action_type'),
+    )
+
+# ===================================================================
 # 🚦 RateLimit Model (新規追加)
 # ===================================================================
 

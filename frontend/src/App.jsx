@@ -19,6 +19,7 @@ import BlacklistManager from './components/BlacklistManager';
 import UserSettings from './components/UserSettings';
 import AutomationPanel from './components/AutomationPanel';
 import LoadingSpinner from './components/LoadingSpinner';
+import FavoriteUsersManager from './components/FavoriteUsersManager'; // 追加
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {

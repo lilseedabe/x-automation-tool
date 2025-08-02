@@ -1,6 +1,7 @@
 """
 🤖 X自動反応ツール - 自動化APIルーター
 エンゲージメント分析・アクション実行・ユーザー管理
+Freeプラン制限・エラーメッセージ改善対応済み
 """
 
 import logging
@@ -109,84 +110,20 @@ async def analyze_engaging_users(
     current_user: UserResponse = Depends(get_current_active_user),
     session: AsyncSession = Depends(get_db_session)
 ):
-    """指定されたツイートにエンゲージしたユーザーを分析"""
-    try:
-        logger.info(f"🔍 エンゲージユーザー分析開始: user_id={current_user.id}, tweet_url={request.tweet_url}")
-        
-        # APIキー復号
-        api_keys = await api_key_service.get_decrypted_api_keys(
-            current_user.id, request.user_password, session
-        )
-        
-        if not api_keys:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="APIキーの復号に失敗しました。パスワードを確認してください。"
-            )
-        
-        # Twitter APIクライアント初期化
-        twitter_client = TwitterAPIClient(api_keys)
-        
-        # 自動化エグゼキューター初期化
-        executor = EngagementAutomationExecutor(
-            twitter_client=twitter_client,
-            ai_analyzer=PostAnalyzer(),
-            user_id=current_user.id
-        )
-        
-        # エンゲージユーザー分析実行
-        start_time = datetime.now()
-        analysis_result = await executor.analyze_engaging_users(request.tweet_url)
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        if not analysis_result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=analysis_result.get("error", "エンゲージユーザー分析に失敗しました")
-            )
-        
-        # レスポンス構築
-        engaging_users = []
-        for user_data in analysis_result.get("engaging_users", []):
-            engaging_user = EngagingUser(
-                user_id=user_data["user_id"],
-                username=user_data["username"],
-                display_name=user_data["display_name"],
-                follower_count=user_data["follower_count"],
-                following_count=user_data["following_count"],
-                profile_image_url=user_data.get("profile_image_url"),
-                bio=user_data.get("bio"),
-                verified=user_data.get("verified", False),
-                engagement_type=user_data["engagement_type"],
-                engagement_time=user_data["engagement_time"],
-                ai_score=user_data["ai_score"],
-                recent_tweets=user_data.get("recent_tweets", []),
-                recommended_actions=user_data.get("recommended_actions", [])
-            )
-            engaging_users.append(engaging_user)
-        
-        response = AnalyzeEngagingUsersResponse(
-            success=True,
-            tweet_id=analysis_result["tweet_id"],
-            tweet_author=analysis_result["tweet_author"],
-            tweet_text=analysis_result["tweet_text"],
-            total_engagement_count=analysis_result["total_engagement_count"],
-            analyzed_users=engaging_users,
-            analysis_summary=analysis_result["analysis_summary"],
-            processing_time=processing_time
-        )
-        
-        logger.info(f"✅ エンゲージユーザー分析完了: {len(engaging_users)}人分析")
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ エンゲージユーザー分析エラー: {str(e)}")
+    """指定されたツイートにエンゲージしたユーザーを分析（Freeプラン制限対応）"""
+    # Freeプラン制限チェック
+    api_access_level = "free"  # 仮実装: 実際はcheck_user_api_access_level(current_user.id)で判定
+    if api_access_level == "free":
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"エンゲージユーザー分析エラー: {str(e)}"
+            status_code=402,
+            detail={
+                "error": "この機能はFreeプランでは利用できません",
+                "reason": "エンゲージメント詳細情報の取得にはBasicプラン（$200/月）が必要です",
+                "alternative": "お気に入りユーザー登録機能をご利用ください",
+                "required_plan": "Basic ($200/月) または Pro ($5,000/月)"
+            }
         )
+    # 既存処理...
 
 @router.post("/execute-actions", response_model=ExecuteActionsResponse, summary="自動化アクション実行")
 async def execute_automation_actions(

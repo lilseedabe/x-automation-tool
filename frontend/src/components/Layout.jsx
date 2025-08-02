@@ -52,6 +52,12 @@ const Layout = ({ children }) => {
       current: location.pathname === '/',
     },
     {
+      name: 'お気に入りユーザー',
+      href: '/favorite-users',
+      icon: Star, // lucide-reactのStarアイコン
+      current: location.pathname === '/favorite-users',
+    },
+    {
       name: 'X自動化パネル',
       href: '/automation',
       icon: Zap,
