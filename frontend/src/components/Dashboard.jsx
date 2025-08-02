@@ -89,15 +89,9 @@ const Dashboard = () => {
 
   // 初回読み込みと定期更新
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchDashboardData();
-      
-      const interval = setInterval(() => {
-        fetchDashboardData();
-      }, 30000); // 30秒ごとに更新
-
-      return () => clearInterval(interval);
-    }
+      if (isAuthenticated) {
+          fetchDashboardData();
+      }
   }, [isAuthenticated]);
 
   const getActivityIcon = (type) => {
@@ -181,6 +175,14 @@ const Dashboard = () => {
       </div>
 
       {/* 統計カード */}
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={fetchDashboardData}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          統計を手動更新
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           {
