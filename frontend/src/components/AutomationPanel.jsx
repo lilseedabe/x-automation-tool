@@ -28,7 +28,7 @@ import {
   X,
   ExternalLink,
   Info,
-  Star,
+  Heart,
   Award,
   Search,
   UserCheck,
@@ -355,7 +355,7 @@ const AutomationPanel = () => {
 
   const getScoreIcon = (score) => {
     if (score >= 80) return <Award className="h-4 w-4 text-green-600" />;
-    if (score >= 60) return <Star className="h-4 w-4 text-blue-600" />;
+    if (score >= 60) return <Heart className="h-4 w-4 text-blue-600" />;
     if (score >= 40) return <Info className="h-4 w-4 text-yellow-600" />;
     return <AlertTriangle className="h-4 w-4 text-red-600" />;
   };

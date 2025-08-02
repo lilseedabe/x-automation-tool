@@ -54,7 +54,7 @@ const Layout = ({ children }) => {
     {
       name: 'お気に入りユーザー',
       href: '/favorite-users',
-      icon: Star, // lucide-reactのStarアイコン
+      icon: Heart, // lucide-reactのHeartアイコン
       current: location.pathname === '/favorite-users',
     },
     {

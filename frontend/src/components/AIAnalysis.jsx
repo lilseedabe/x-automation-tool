@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bot, BarChart3, TrendingUp, AlertTriangle, CheckCircle, 
-  Clock, Zap, Target, Star, ThumbsUp, MessageCircle, 
+  Clock, Zap, Target, Heart, ThumbsUp, MessageCircle, 
   RotateCcw, Eye, Shield, Activity 
 } from 'lucide-react';
 
@@ -368,7 +368,7 @@ const AIAnalysis = ({ post, onAnalysisComplete }) => {
       {/* 推奨事項 */}
       <div className="mb-6">
         <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center">
-          <Star className="h-5 w-5 mr-2 text-yellow-600" />
+          <Heart className="h-5 w-5 mr-2 text-yellow-600" />
           最適化の推奨事項
         </h4>
         <ul className="space-y-2">

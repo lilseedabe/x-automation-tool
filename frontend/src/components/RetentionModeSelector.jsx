@@ -19,7 +19,7 @@ import {
   Settings,
   Timer,
   Refresh,
-  Star,
+  Heart,
   Award,
   Target,
 } from 'lucide-react';

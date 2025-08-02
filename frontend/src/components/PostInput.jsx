@@ -24,7 +24,7 @@ import {
   Plus,
   Minus,
   Bot,
-  Star,
+  Heart,
   TrendingUp,
   Users,
   Heart,
@@ -233,7 +233,7 @@ const PostInput = ({ onPost, onAnalyze }) => {
               }`}
               title="AI提案を表示"
             >
-              <Star className="h-5 w-5" />
+              <Heart className="h-5 w-5" />
             </button>
             
             <button
