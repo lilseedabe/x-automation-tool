@@ -191,11 +191,21 @@ class TwitterAPIClient:
                 }
                 
         except Exception as e:
-            logger.error(f"❌ ツイート取得エラー: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            # TweepyのUnauthorized例外など詳細情報をログ出力
+            if hasattr(e, "response") and e.response is not None:
+                logger.error(f"❌ ツイート取得エラー: {str(e)} | status_code={getattr(e.response, 'status_code', None)} | response={getattr(e.response, 'text', None)}")
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "status_code": getattr(e.response, "status_code", None),
+                    "response_body": getattr(e.response, "text", None)
+                }
+            else:
+                logger.error(f"❌ ツイート取得エラー: {str(e)}")
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
     
     async def get_liking_users(self, tweet_id: str, max_results: int = 100) -> Dict[str, Any]:
         """ツイートにいいねしたユーザー一覧取得"""
