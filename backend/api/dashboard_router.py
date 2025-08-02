@@ -350,8 +350,8 @@ async def _calculate_success_rate(user_id: str, session: AsyncSession) -> float:
         row = result.one()
         
         if not row.total or row.total == 0:
-            return 95.0  # デフォルト値
-        
+            return 0.0  # 実績がない場合は0%
+
         success_rate = float(row.success / row.total * 100)
         return min(100.0, max(0.0, success_rate))  # 0-100%の範囲に制限
         
@@ -367,7 +367,7 @@ async def _calculate_success_rate(user_id: str, session: AsyncSession) -> float:
                 # 簡易成功率計算（95%をベースに調整）
                 return min(98.0, 90.0 + (total_count * 0.1))
             else:
-                return 95.0
+                return 0.0
         except Exception as simple_error:
             logger.warning(f"⚠️ 簡易成功率計算もエラー: {str(simple_error)}")
             return 95.0
