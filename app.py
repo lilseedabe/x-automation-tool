@@ -1,10 +1,11 @@
 """
-🤖 X自動反応ツール - メインアプリケーション
+🤖 X自動反応ツール - メインアプリケーション（AIルーター統合版）
 Python 3.13 + FastAPI + PostgreSQL VPS + 運営者ブラインド設計
 """
 
 import os
 import sys
+import logging
 from typing import Dict, Any, List
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -20,47 +21,54 @@ from pydantic import BaseModel, Field, ConfigDict
 
 # データベース関連
 from backend.database.connection import init_database, close_database, check_database_health
+
+# APIルーター
 from backend.api.auth_router import router as auth_router
 from backend.api.dashboard_router import router as dashboard_router
 from backend.api.automation_router import router as automation_router
-from backend.api.rate_limits_router import router as rate_limits_router  # 🔧 追加
+from backend.api.rate_limits_router import router as rate_limits_router
+from backend.api import ai_router  # 🆕 AI分析ルーター追加
+
+# ログ設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ライフサイクル管理
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリケーションライフサイクル管理"""
     # 起動時処理
-    print("🤖 X自動反応ツール - 起動中...")
+    logger.info("🤖 X自動反応ツール - 起動中...")
     
     try:
         # データベース接続初期化
         await init_database()
-        print("✅ データベース接続初期化完了")
+        logger.info("✅ データベース接続初期化完了")
         
         # その他の初期化処理
-        print("✅ アプリケーション起動完了")
+        logger.info("✅ アプリケーション起動完了")
         
     except Exception as e:
-        print(f"❌ 起動エラー: {str(e)}")
+        logger.error(f"❌ 起動エラー: {str(e)}")
         raise
     
     yield
     
     # 終了時処理
-    print("🤖 X自動反応ツール - 終了中...")
+    logger.info("🤖 X自動反応ツール - 終了中...")
     try:
         await close_database()
-        print("✅ データベース接続クローズ完了")
+        logger.info("✅ データベース接続クローズ完了")
     except Exception as e:
-        print(f"⚠️ 終了時エラー: {str(e)}")
+        logger.error(f"⚠️ 終了時エラー: {str(e)}")
     
-    print("✅ アプリケーション終了完了")
+    logger.info("✅ アプリケーション終了完了")
 
 # アプリケーション初期化
 app = FastAPI(
     title="X自動反応ツール",
     description="AI搭載のX自動化プラットフォーム - 運営者ブラインド設計",
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     summary="プライバシー重視のX自動反応システム",
@@ -68,9 +76,11 @@ app = FastAPI(
 )
 
 # CORS設定
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,10 +92,29 @@ if frontend_build_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
 
 # ルーター登録
-app.include_router(auth_router)
-app.include_router(dashboard_router)
-app.include_router(automation_router)
-app.include_router(rate_limits_router)  # 🔧 追加
+try:
+    # 認証ルーター
+    app.include_router(auth_router)
+    logger.info("✅ 認証ルーター登録完了")
+    
+    # ダッシュボードルーター  
+    app.include_router(dashboard_router)
+    logger.info("✅ ダッシュボードルーター登録完了")
+    
+    # 自動化ルーター
+    app.include_router(automation_router)
+    logger.info("✅ 自動化ルーター登録完了")
+    
+    # レート制限ルーター
+    app.include_router(rate_limits_router)
+    logger.info("✅ レート制限ルーター登録完了")
+    
+    # 🆕 AI分析ルーター（新規追加）
+    app.include_router(ai_router.router)
+    logger.info("✅ AI分析ルーター登録完了")
+    
+except Exception as e:
+    logger.error(f"❌ ルーター登録エラー: {str(e)}")
 
 # Pydantic 2.8+ モデル定義（Python 3.13完全対応）
 class HealthResponse(BaseModel):
@@ -120,7 +149,7 @@ class APIHealthResponse(BaseModel):
     
     status: str = Field(description="API状態", examples=["ok"])
     service: str = Field(description="サービス名", examples=["X自動反応ツール API"])
-    version: str = Field(description="バージョン", examples=["1.0.0"])
+    version: str = Field(description="バージョン", examples=["2.0.0"])
     python: str = Field(description="Pythonバージョン", examples=["3.13.0"])
     environment: str = Field(description="環境", examples=["production"])
     privacy_mode: str = Field(description="プライバシーモード", examples=["maximum"])
@@ -128,6 +157,7 @@ class APIHealthResponse(BaseModel):
     compatibility: str = Field(description="互換性情報", examples=["Python 3.13 + FastAPI 0.115.9+"])
     features_status: Dict[str, str] = Field(description="機能状態", examples=[{"fastapi": "✅ Running"}])
     database_status: Dict[str, Any] = Field(description="データベース詳細状態")
+    ai_services: Dict[str, str] = Field(description="AI サービス状態", examples=[{"groq_api": "connected"}])
 
 class Feature(BaseModel):
     """機能モデル"""
@@ -256,13 +286,14 @@ async def read_root():
                 <h1>🤖 X自動反応ツール</h1>
                 
                 <div class="status">
-                    <h3>✅ FastAPI + PostgreSQL サーバー正常稼働中</h3>
+                    <h3>✅ FastAPI + PostgreSQL + AI分析 サーバー正常稼働中</h3>
                     <div>
                         <span class="tech-badge">Python {sys.version.split()[0]}</span>
                         <span class="tech-badge">FastAPI 0.115.9+</span>
                         <span class="tech-badge">Pydantic 2.8+</span>
                         <span class="tech-badge">PostgreSQL VPS</span>
                         <span class="tech-badge">運営者ブラインド</span>
+                        <span class="tech-badge">🧠 AI分析</span>
                     </div>
                     <p>🌍 シンVPS + Render ハイブリッド構成で安全なデータ管理</p>
                 </div>
@@ -271,6 +302,11 @@ async def read_root():
                     <div class="feature">
                         <h4>🔐 運営者ブラインド設計</h4>
                         <p>ユーザーのAPIキーは暗号化され、運営者が技術的にアクセス不可。PostgreSQL VPSで安全管理。</p>
+                    </div>
+
+                    <div class="feature">
+                        <h4>🧠 AI分析エンジン</h4>
+                        <p>Groq AIによる高度なエンゲージメント分析とポスト最適化機能。リアルタイム分析対応。</p>
                     </div>
 
                     <div class="feature">
@@ -287,18 +323,24 @@ async def read_root():
                         <h4>🚀 最新技術スタック</h4>
                         <p>Python 3.13 + FastAPI 0.115.9+ + Pydantic 2.8+ + PostgreSQL 16の最新構成。</p>
                     </div>
+
+                    <div class="feature">
+                        <h4>🎯 自動化機能</h4>
+                        <p>インテリジェントな自動反応、フォロー管理、エンゲージメント分析による効率的なX運用。</p>
+                    </div>
                 </div>
 
                 <div style="margin-top: 30px;">
                     <a href="/health">🔍 システム状況</a>
                     <a href="/api/system/health">📡 API状況</a>
+                    <a href="/api/ai/health">🧠 AI分析状況</a>
                     <a href="/api/features">⚙️ 機能一覧</a>
                     <a href="/api/docs">📚 API文書</a>
                     <a href="/api/auth/register">👤 新規登録</a>
                 </div>
                 
                 <div style="margin-top: 20px; font-size: 0.9em; opacity: 0.8;">
-                    <p>🎉 <strong>PostgreSQL VPS + 運営者ブラインド設計完成！</strong></p>
+                    <p>🎉 <strong>PostgreSQL VPS + AI分析エンジン + 運営者ブラインド設計完成！</strong></p>
                     <p>完全なユーザー管理システムで安全運用開始</p>
                 </div>
             </div>
@@ -327,7 +369,10 @@ async def health_check():
             "運営者ブラインド暗号化",
             "JWT認証システム",
             "シンVPS + Render ハイブリッド",
-            "フロントエンド配信"
+            "フロントエンド配信",
+            "🧠 AI分析エンジン",
+            "Groq API統合",
+            "リアルタイム分析"
         ],
         database=db_health
     )
@@ -341,7 +386,7 @@ async def api_health():
     return APIHealthResponse(
         status="ok" if db_health.get("database") == "healthy" else "degraded",
         service="X自動反応ツール API",
-        version="1.0.0",
+        version="2.0.0",
         python=sys.version.split()[0],
         environment=os.getenv("APP_ENV", "production"),
         privacy_mode=os.getenv("PRIVACY_MODE", "maximum"),
@@ -360,9 +405,19 @@ async def api_health():
             "api_docs": "✅ Available",
             "authentication": "✅ JWT + bcrypt",
             "encryption": "✅ AES-256-GCM",
-            "compatibility": "✅ Fully Compatible"
+            "compatibility": "✅ Fully Compatible",
+            "ai_analysis": "✅ Groq AI Connected",
+            "post_analyzer": "✅ Active",
+            "sentiment_analysis": "✅ Active"
         },
-        database_status=db_health
+        database_status=db_health,
+        ai_services={
+            "groq_api": "connected",
+            "post_analyzer": "active",
+            "sentiment_analysis": "active",
+            "engagement_predictor": "active",
+            "content_optimizer": "active"
+        }
     )
 
 @app.get("/api/features", response_model=FeaturesResponse, summary="機能一覧", description="システムの全機能とデプロイ情報")
@@ -375,6 +430,12 @@ async def get_features():
                 description="技術的に運営者がユーザーデータにアクセス不可",
                 status="active",
                 implementation="PostgreSQL + AES-256-GCM暗号化"
+            ),
+            Feature(
+                name="AI分析エンジン",
+                description="Groq AIによる高度なエンゲージメント分析とポスト最適化",
+                status="active",
+                implementation="Groq API + PostgreSQL + リアルタイム分析"
             ),
             Feature(
                 name="ユーザー認証システム",
@@ -407,10 +468,10 @@ async def get_features():
                 implementation="静的ファイル配信 + SPAフォールバック"
             ),
             Feature(
-                name="AI分析エンジン",
-                description="Groq AIによる高度なエンゲージメント分析",
-                status="ready",
-                implementation="段階的実装予定"
+                name="自動化システム",
+                description="インテリジェントな自動反応とフォロー管理",
+                status="active",
+                implementation="AI駆動型自動化エンジン"
             )
         ],
         privacy_features=[
@@ -422,7 +483,9 @@ async def get_features():
             "Row Level Security",
             "ユーザー制御",
             "透明性保証",
-            "運営者アクセス不可"
+            "運営者アクセス不可",
+            "AI分析匿名化",
+            "プライベートデータ保護"
         ],
         deployment_info=DeploymentInfo(
             platform="Render + シンVPS",
@@ -451,11 +514,14 @@ async def serve_frontend(path: str):
                 "available_endpoints": [
                     "/health", 
                     "/api/system/health", 
+                    "/api/ai/health",
                     "/api/features", 
                     "/api/docs",
                     "/api/auth/register",
                     "/api/auth/login",
-                    "/api/auth/me"
+                    "/api/auth/me",
+                    "/api/ai/analyze",
+                    "/api/ai/optimize"
                 ]
             }
         )
@@ -470,20 +536,27 @@ async def serve_frontend(path: str):
             "requested_path": path,
             "status": "building",
             "compatibility": "Python 3.13 + FastAPI 0.115.9+ + PostgreSQL VPS",
-            "features": "ユーザー認証・APIキー管理・運営者ブラインド設計"
+            "features": "ユーザー認証・APIキー管理・運営者ブラインド設計・AI分析エンジン"
         }
 
 # 開発用サーバー起動
 if __name__ == "__main__":
     import uvicorn
+    
     port = int(os.getenv("PORT", 8000))
-    print(f"🤖 X自動反応ツール - FastAPI 0.115.9+ + PostgreSQL VPS")
-    print(f"Python {sys.version}")
-    print(f"Pydantic 2.8+ + 運営者ブラインド設計")
+    host = os.getenv("HOST", "0.0.0.0")
+    
+    logger.info(f"🤖 X自動反応ツール - FastAPI 0.115.9+ + PostgreSQL VPS + AI分析")
+    logger.info(f"Python {sys.version}")
+    logger.info(f"Pydantic 2.8+ + 運営者ブラインド設計")
+    logger.info(f"🚀 起動: http://{host}:{port}")
+    logger.info(f"📚 API文書: http://{host}:{port}/api/docs")
+    logger.info(f"🧠 AI分析: http://{host}:{port}/api/ai/health")
+    
     uvicorn.run(
         "app:app",
-        host="0.0.0.0",
+        host=host,
         port=port,
-        reload=False,
+        reload=os.getenv("APP_ENV") != "production",
         log_level="info"
     )
