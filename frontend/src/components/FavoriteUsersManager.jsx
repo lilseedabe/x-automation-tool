@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "../utils/api";
-import { Star, Trash2, Plus, Bot } from "lucide-react";
+import { Trash2, Plus, Bot } from "lucide-react";
+import Star from "lucide-react/lib/icons/star";
 
 const FavoriteUsersManager = () => {
   const [favoriteUsers, setFavoriteUsers] = useState([]);
