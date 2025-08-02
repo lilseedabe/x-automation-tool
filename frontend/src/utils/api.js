@@ -1,5 +1,5 @@
 /**
- * 🔗 X自動反応ツール - APIクライアント
+ * 🔗 X自動反応ツール - APIクライアント（AI分析統合版）
  * 
  * バックエンドAPIとの通信を管理
  */
@@ -215,6 +215,198 @@ class APIClient {
   async getMyRateLimits() {
     return this.get('/api/rate-limits/my');
   }
+
+  // ===================================================================
+  // 🤖 AI分析関連API
+  // ===================================================================
+
+  /**
+   * 投稿内容をAI分析
+   * @param {string} content - 分析対象の投稿内容
+   * @param {string} analysisType - 分析タイプ（デフォルト: engagement_prediction）
+   * @returns {Promise<Object>} AI分析結果
+   */
+  async analyzePost(content, analysisType = 'engagement_prediction') {
+    return this.post('/api/ai/analyze-post', {
+      content,
+      analysis_type: analysisType
+    });
+  }
+
+  /**
+   * AI分析サマリーを取得
+   * @returns {Promise<Object>} AI分析サマリー
+   */
+  async getAnalysisSummary() {
+    return this.get('/api/ai/analysis-summary');
+  }
+
+  /**
+   * 複数投稿の一括AI分析
+   * @param {Array<string>} posts - 分析対象の投稿配列
+   * @returns {Promise<Object>} バッチ分析結果
+   */
+  async batchAnalyzePosts(posts) {
+    return this.post('/api/ai/batch-analyze', posts);
+  }
+
+  /**
+   * AI分析システムのヘルスチェック
+   * @returns {Promise<Object>} AIシステム状態
+   */
+  async checkAIHealth() {
+    return this.get('/api/ai/health');
+  }
+
+  // ===================================================================
+  // 🧠 高度なAI分析メソッド
+  // ===================================================================
+
+  /**
+   * センチメント分析専用
+   * @param {string} content - 分析対象の投稿内容
+   * @returns {Promise<Object>} センチメント分析結果
+   */
+  async analyzeSentiment(content) {
+    return this.analyzePost(content, 'sentiment_analysis');
+  }
+
+  /**
+   * エンゲージメント予測専用
+   * @param {string} content - 分析対象の投稿内容
+   * @returns {Promise<Object>} エンゲージメント予測結果
+   */
+  async predictEngagement(content) {
+    return this.analyzePost(content, 'engagement_prediction');
+  }
+
+  /**
+   * キーワード抽出・最適化提案
+   * @param {string} content - 分析対象の投稿内容
+   * @returns {Promise<Object>} 最適化提案結果
+   */
+  async getOptimizationSuggestions(content) {
+    return this.analyzePost(content, 'optimization_suggestions');
+  }
+
+  /**
+   * 投稿リスク分析
+   * @param {string} content - 分析対象の投稿内容
+   * @returns {Promise<Object>} リスク分析結果
+   */
+  async analyzePostRisk(content) {
+    return this.analyzePost(content, 'risk_assessment');
+  }
+
+  // ===================================================================
+  // 📊 AI分析統計メソッド
+  // ===================================================================
+
+  /**
+   * ユーザーのAI分析履歴を取得
+   * @param {number} limit - 取得件数制限（デフォルト: 20）
+   * @returns {Promise<Object>} 分析履歴
+   */
+  async getAnalysisHistory(limit = 20) {
+    return this.get(`/api/ai/analysis-history?limit=${limit}`);
+  }
+
+  /**
+   * AI分析トレンドデータを取得
+   * @param {string} period - 期間（week, month, year）
+   * @returns {Promise<Object>} トレンドデータ
+   */
+  async getAnalysisTrends(period = 'week') {
+    return this.get(`/api/ai/trends?period=${period}`);
+  }
+
+  /**
+   * 最高スコア投稿を取得
+   * @param {number} limit - 取得件数制限（デフォルト: 10）
+   * @returns {Promise<Object>} 最高スコア投稿一覧
+   */
+  async getTopScoringPosts(limit = 10) {
+    return this.get(`/api/ai/top-scoring?limit=${limit}`);
+  }
+
+  // ===================================================================
+  // 🔧 ユーティリティメソッド
+  // ===================================================================
+
+  /**
+   * AI分析結果をローカルストレージにキャッシュ
+   * @param {string} content - 投稿内容
+   * @param {Object} analysisResult - 分析結果
+   */
+  cacheAnalysisResult(content, analysisResult) {
+    try {
+      const cacheKey = `ai_analysis_${btoa(content).substring(0, 20)}`;
+      const cacheData = {
+        content,
+        result: analysisResult,
+        timestamp: Date.now(),
+        expires: Date.now() + (24 * 60 * 60 * 1000) // 24時間
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+    } catch (error) {
+      console.warn('AI分析結果のキャッシュに失敗:', error);
+    }
+  }
+
+  /**
+   * キャッシュされたAI分析結果を取得
+   * @param {string} content - 投稿内容
+   * @returns {Object|null} キャッシュされた分析結果
+   */
+  getCachedAnalysisResult(content) {
+    try {
+      const cacheKey = `ai_analysis_${btoa(content).substring(0, 20)}`;
+      const cacheData = localStorage.getItem(cacheKey);
+      
+      if (!cacheData) return null;
+      
+      const parsed = JSON.parse(cacheData);
+      
+      // 期限切れチェック
+      if (Date.now() > parsed.expires) {
+        localStorage.removeItem(cacheKey);
+        return null;
+      }
+      
+      return parsed.result;
+    } catch (error) {
+      console.warn('AI分析キャッシュの取得に失敗:', error);
+      return null;
+    }
+  }
+
+  /**
+   * AI分析を実行（キャッシュ対応）
+   * @param {string} content - 分析対象の投稿内容
+   * @param {string} analysisType - 分析タイプ
+   * @param {boolean} useCache - キャッシュ使用フラグ
+   * @returns {Promise<Object>} AI分析結果
+   */
+  async analyzePostWithCache(content, analysisType = 'engagement_prediction', useCache = true) {
+    // キャッシュチェック
+    if (useCache) {
+      const cachedResult = this.getCachedAnalysisResult(content);
+      if (cachedResult) {
+        console.log('🎯 キャッシュからAI分析結果を取得');
+        return cachedResult;
+      }
+    }
+    
+    // API呼び出し
+    const result = await this.analyzePost(content, analysisType);
+    
+    // キャッシュに保存
+    if (useCache && result.success) {
+      this.cacheAnalysisResult(content, result);
+    }
+    
+    return result;
+  }
 }
 
 // シングルトンインスタンスを作成
@@ -250,5 +442,61 @@ export const {
   toggleAutomation,
   getSystemInfo,
   healthCheck,
-  getMyRateLimits
+  getMyRateLimits,
+  
+  // AI分析メソッド
+  analyzePost,
+  getAnalysisSummary,
+  batchAnalyzePosts,
+  checkAIHealth,
+  analyzeSentiment,
+  predictEngagement,
+  getOptimizationSuggestions,
+  analyzePostRisk,
+  getAnalysisHistory,
+  getAnalysisTrends,
+  getTopScoringPosts,
+  analyzePostWithCache
 } = apiClient;
+
+// ===================================================================
+// 📋 使用例
+// ===================================================================
+
+/*
+使用例:
+
+// 基本的なAI分析
+const result = await apiClient.analyzePost("AIを活用した自動化ツールを開発中です！");
+
+// キャッシュ対応のAI分析
+const cachedResult = await apiClient.analyzePostWithCache("同じ投稿内容", "engagement_prediction", true);
+
+// センチメント分析専用
+const sentiment = await apiClient.analyzeSentiment("今日は良い天気ですね！");
+
+// エンゲージメント予測
+const engagement = await apiClient.predictEngagement("新機能をリリースしました🚀");
+
+// AI分析サマリー取得
+const summary = await apiClient.getAnalysisSummary();
+
+// バッチ分析
+const batchResults = await apiClient.batchAnalyzePosts([
+  "投稿1の内容",
+  "投稿2の内容", 
+  "投稿3の内容"
+]);
+
+// AIシステムヘルスチェック
+const aiHealth = await apiClient.checkAIHealth();
+
+// 分析履歴取得
+const history = await apiClient.getAnalysisHistory(10);
+
+// トレンドデータ取得
+const trends = await apiClient.getAnalysisTrends('month');
+
+// 最高スコア投稿取得
+const topPosts = await apiClient.getTopScoringPosts(5);
+*/
