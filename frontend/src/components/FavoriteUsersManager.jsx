@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "../utils/api";
-import { Star, Trash2, Plus, Bot } from "lucide-react";
+import { Trash2, Plus, Bot } from "lucide-react";
+// Starアイコンは一旦削除（importしない）
 
 const FavoriteUsersManager = () => {
   const [favoriteUsers, setFavoriteUsers] = useState([]);
@@ -51,7 +52,7 @@ const FavoriteUsersManager = () => {
     <div className="max-w-xl mx-auto mt-8 space-y-6">
       <div className="flex items-center space-x-3 mb-6">
         <div className="p-2 bg-yellow-100 rounded-lg">
-          <Star className="h-6 w-6 text-yellow-600" />
+          {/* <Star className="h-6 w-6 text-yellow-600" /> */}
         </div>
         <div>
           <h2 className="text-2xl font-bold text-gray-900">お気に入りユーザー管理</h2>
