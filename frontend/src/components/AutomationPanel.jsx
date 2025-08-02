@@ -8,7 +8,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Heart,
   Repeat,
   Bot,
   Play,
@@ -28,7 +27,6 @@ import {
   X,
   ExternalLink,
   Info,
-  Heart,
   Award,
   Search,
   UserCheck,
