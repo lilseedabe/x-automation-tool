@@ -24,7 +24,6 @@ import {
   Plus,
   Minus,
   Bot,
-  Heart,
   TrendingUp,
   Users,
   Heart,
